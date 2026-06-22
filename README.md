@@ -1,42 +1,44 @@
+<div align="center">
+
 # xjwt
 
-![Go Version](https://img.shields.io/badge/go-1.26+-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+**Lightweight JWT wrapper for Go, built on top of [golang-jwt/jwt](https://github.com/golang-jwt/jwt).**
 
-Lightweight wrapper around [golang-jwt/jwt](https://github.com/golang-jwt/jwt)
-that provides a clean API for creating and validating JSON Web Tokens.
+![Go Version](https://img.shields.io/badge/go-1.26%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## What is a JWT?
+</div>
 
-JWT.io has [a great introduction](https://jwt.io/introduction) to JSON Web Tokens.
+`xjwt` is a lightweight wrapper around [`golang-jwt/jwt`](https://github.com/golang-jwt/jwt) that provides a clean API
+for creating and validating JSON Web Tokens.
 
-In short, it's a signed JSON object used for secure data exchange between parties.
-Commonly used for `Bearer` tokens in OAuth 2.0. A token consists of three
-base64url-encoded parts separated by `.`:
+## Features
 
-- **Header** — signing algorithm and token type
-- **Claims** — the payload: subject, expiration, custom fields, etc.
-- **Signature** — verifies the token hasn't been tampered with
-
-See [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) for the full spec.
-
-## Requirements
-
-- Go 1.21+
+* **Tokens**: Create signed JWTs with custom claims.
+* **Claims**: Parse and validate tokens into typed claim structs.
+* **Bearer**: Built-in `Bearer <token>` extraction and validation.
+* **Signing**: Configurable signing method with `HS256` by default.
+* **Errors**: Exported errors for invalid tokens, schemes, signatures, and claims.
+* **Expiration**: Helper for setting `exp` in registered claims.
 
 ## Installation
 
-```sh
+```bash id="b20l9e"
 go get github.com/mkbeh/xjwt
 ```
 
 ## Quick Start
 
+The example below demonstrates how to initialize the token manager, generate a signed JWT with custom claims, and parse
+it back using a `Bearer` token string.
+
+<!-- @formatter:off -->
 ```go
 package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -49,63 +51,99 @@ type MyClaims struct {
 }
 
 func main() {
-	manager, err := xjwt.New(xjwt.WithSecretKey([]byte("secret")))
+	tm, err := xjwt.New(
+		xjwt.WithSecretKey([]byte("secret")),
+	)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to init token manager: %v", err)
 	}
 
-	// Create token
-	token, err := manager.CreateWithClaims(&MyClaims{
+	token, err := tm.CreateWithClaims(&MyClaims{
 		UserID: "42",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: xjwt.AddExpiresAt(time.Hour),
 		},
 	})
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to create token: %v", err)
 	}
 
 	fmt.Println("token:", token)
 
-	// Parse and validate token
 	claims := &MyClaims{}
-	if err := manager.ParseWithClaims("Bearer "+token, claims); err != nil {
-		panic(err)
+	err = tm.ParseWithClaims("Bearer "+token, claims)
+	if err != nil {
+		log.Fatalf("failed to parse token: %v", err)
 	}
 
-	fmt.Printf("user_id: %s\n", claims.UserID)
+	fmt.Println("user_id:", claims.UserID)
+}
+
+```
+<!-- @formatter:on -->
+
+More examples: [examples/](https://github.com/mkbeh/xjwt/tree/main/examples)
+
+## Signing Method
+
+By default, `xjwt` uses `HS256`.
+
+Use `WithSigningMethod` to configure any other signing method supported by `golang-jwt/jwt`.
+
+<!-- @formatter:off -->
+```go
+tm, err := xjwt.New(
+	xjwt.WithSecretKey([]byte("secret")),
+	xjwt.WithSigningMethod(jwt.SigningMethodHS512),
+)
+if err != nil {
+	log.Fatalf("failed to initialize token manager: %v", err)
 }
 ```
+<!-- @formatter:on -->
 
-## Configuration
-
-| Option                                 | Default  | Description       |
-|----------------------------------------|----------|-------------------|
-| `WithSecretKey([]byte)`                | required | HMAC secret key   |
-| `WithSigningMethod(jwt.SigningMethod)` | `HS256`  | Signing algorithm |
+During parsing, `xjwt` automatically validates that the incoming token's signing algorithm matches the configured method
+to prevent algorithm confusion attacks.
 
 ## Error Handling
 
-```go
-import "errors"
+`xjwt` wraps validation failures with exported errors, allowing you to easily inspect specific failure reasons using
+standard `errors.Is`.
 
-err := manager.ParseWithClaims(tokenString, claims)
-switch {
-    case errors.Is(err, xjwt.ErrInvalidToken):
-    // malformed or missing token
-    case errors.Is(err, xjwt.ErrInvalidScheme):
-    // missing or wrong scheme (expected Bearer)
-    case errors.Is(err, xjwt.ErrTokenExpired):
-    // token is expired
-    case errors.Is(err, xjwt.ErrInvalidSignature):
-    // signature mismatch
+<!-- @formatter:off -->
+```go
+claims := &MyClaims{}
+err := tm.ParseWithClaims(tokenString, claims)
+if err != nil {
+	if errors.Is(err, xjwt.ErrTokenRestriction) {
+		// token is expired or has invalid claims (e.g., nbf, aud)
+		return nil, ErrExpired
+	}
+	if errors.Is(err, xjwt.ErrInvalidSignature) {
+		// signature verification failed
+		return nil, ErrBadSignature
+	}
+
+	return nil, fmt.Errorf("failed to parse token: %w", err)
 }
 ```
+<!-- @formatter:on -->
 
-## Examples
+### Exported Errors
 
-More examples can be found in [/examples](https://github.com/mkbeh/xjwt/tree/main/examples).
+| Error | Description |
+| :--- | :--- |
+| `ErrTokenSigned` | Token signing failed. |
+| `ErrInvalidToken` | Token is malformed, missing, or invalid. |
+| `ErrInvalidScheme` | Authorization scheme is not `Bearer`. |
+| `ErrInvalidSignature` | Token signature is invalid or algorithm mismatches. |
+| `ErrTokenRestriction` | Token claims are invalid (e.g., expired). |
+
+## References
+
+* [JWT Introduction](https://jwt.io/introduction) — Core concepts of JSON Web Tokens.
+* [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) — Official JSON Web Token specification.
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT License](LICENSE).
