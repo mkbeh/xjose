@@ -35,6 +35,23 @@ const (
 // String returns the JOSE algorithm identifier.
 func (a Algorithm) String() string { return string(a) }
 
+// ParseAlgorithm parses a supported JOSE algorithm identifier.
+func ParseAlgorithm(value string) (Algorithm, error) {
+	algorithm := Algorithm(value)
+	if _, err := algorithm.spec(); err != nil {
+		return "", err
+	}
+
+	return algorithm, nil
+}
+
+// IsSupported reports whether the algorithm is supported by xjwt.
+func (a Algorithm) IsSupported() bool {
+	_, err := a.spec()
+
+	return err == nil
+}
+
 type algorithmFamily uint8
 
 const (
