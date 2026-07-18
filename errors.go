@@ -17,6 +17,9 @@ var (
 	// ErrInvalidKeyID indicates an invalid JOSE kid value.
 	ErrInvalidKeyID = errors.New("invalid jwt key id")
 
+	// ErrDuplicateKeyID indicates that a key set contains the same kid more than once.
+	ErrDuplicateKeyID = errors.New("duplicate jwt key id")
+
 	// ErrMissingKeyID indicates that a named verification key requires kid but
 	// the token omitted it.
 	ErrMissingKeyID = errors.New("missing jwt key id")

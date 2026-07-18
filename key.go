@@ -237,6 +237,19 @@ func (k VerificationKey) ID() string { return k.id }
 // Algorithm returns the algorithm to which this key is bound.
 func (k VerificationKey) Algorithm() Algorithm { return k.algorithm }
 
+// PublicKey returns a copy of the asymmetric public key. HMAC verification
+// keys have no public key and return ErrInvalidKey.
+func (k VerificationKey) PublicKey() (crypto.PublicKey, error) {
+	if k.value == nil {
+		return nil, fmt.Errorf("%w: verification key is not initialized", ErrInvalidKey)
+	}
+	if _, ok := k.value.([]byte); ok {
+		return nil, fmt.Errorf("%w: HMAC verification keys do not have a public key", ErrInvalidKey)
+	}
+
+	return cloneVerificationValue(k.value), nil
+}
+
 func (k VerificationKey) clone() VerificationKey {
 	return VerificationKey{
 		id:        k.id,
