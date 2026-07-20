@@ -3,64 +3,38 @@ package xjwt
 import (
 	"context"
 	"fmt"
-	"slices"
+	"sort"
 )
 
-// StaticKeySet is an immutable in-memory collection of verification keys.
-//
-// A set may contain either exactly one anonymous key or one or more uniquely
-// named keys. Mixing anonymous and named keys is rejected because it makes kid
-// selection ambiguous.
 type StaticKeySet struct {
 	anonymous *VerificationKey
-	keys      map[string]VerificationKey
+	named     map[string]VerificationKey
 }
 
-// NewStaticKeySet creates an immutable verification-key set.
-//
-// A single anonymous key accepts only tokens without kid. Named keys require a
-// matching kid. When more than one key is supplied, every key must have a
-// unique non-empty identifier.
 func NewStaticKeySet(keys ...VerificationKey) (*StaticKeySet, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("%w: at least one verification key is required", ErrInvalidConfig)
 	}
-
-	set := &StaticKeySet{}
-
-	if len(keys) == 1 && keys[0].id == "" {
-		key, err := validatedVerificationKey(keys[0])
-		if err != nil {
-			return nil, fmt.Errorf("verification key 0: %w", err)
+	s := &StaticKeySet{named: make(map[string]VerificationKey, len(keys))}
+	for _, k := range keys {
+		if k.method == nil || k.key == nil {
+			return nil, fmt.Errorf("%w: uninitialized verification key", ErrInvalidKey)
 		}
-		set.anonymous = &key
-
-		return set, nil
+		if k.id == "" {
+			if len(keys) != 1 {
+				return nil, fmt.Errorf("%w: anonymous key cannot be mixed with other keys", ErrInvalidConfig)
+			}
+			c := k.clone()
+			s.anonymous = &c
+			continue
+		}
+		if _, ok := s.named[k.id]; ok {
+			return nil, fmt.Errorf("%w: %q", ErrDuplicateKeyID, k.id)
+		}
+		s.named[k.id] = k.clone()
 	}
-
-	set.keys = make(map[string]VerificationKey, len(keys))
-	for index, candidate := range keys {
-		key, err := validatedVerificationKey(candidate)
-		if err != nil {
-			return nil, fmt.Errorf("verification key %d: %w", index, err)
-		}
-		if key.id == "" {
-			return nil, fmt.Errorf(
-				"%w: verification key %d is anonymous; named keys are required in a multi-key set",
-				ErrInvalidConfig,
-				index,
-			)
-		}
-		if _, exists := set.keys[key.id]; exists {
-			return nil, fmt.Errorf("%w: %q", ErrDuplicateKeyID, key.id)
-		}
-		set.keys[key.id] = key
-	}
-
-	return set, nil
+	return s, nil
 }
-
-// Len returns the number of verification keys in the set.
 func (s *StaticKeySet) Len() int {
 	if s == nil {
 		return 0
@@ -68,13 +42,8 @@ func (s *StaticKeySet) Len() int {
 	if s.anonymous != nil {
 		return 1
 	}
-
-	return len(s.keys)
+	return len(s.named)
 }
-
-// Keys returns independent copies of all verification keys in deterministic
-// order. A single anonymous key is returned as the only element; named keys are
-// ordered lexicographically by kid.
 func (s *StaticKeySet) Keys() []VerificationKey {
 	if s == nil {
 		return nil
@@ -82,64 +51,33 @@ func (s *StaticKeySet) Keys() []VerificationKey {
 	if s.anonymous != nil {
 		return []VerificationKey{s.anonymous.clone()}
 	}
-
-	ids := make([]string, 0, len(s.keys))
-	for id := range s.keys {
+	ids := make([]string, 0, len(s.named))
+	for id := range s.named {
 		ids = append(ids, id)
 	}
-	slices.Sort(ids)
-
-	keys := make([]VerificationKey, 0, len(ids))
+	sort.Strings(ids)
+	out := make([]VerificationKey, 0, len(ids))
 	for _, id := range ids {
-		keys = append(keys, s.keys[id].clone())
+		out = append(out, s.named[id].clone())
 	}
-
-	return keys
+	return out
 }
-
-// Resolve selects a key by the untrusted JOSE alg and kid header parameters.
-func (s *StaticKeySet) Resolve(ctx context.Context, header Header) (VerificationKey, error) {
-	if err := ctx.Err(); err != nil {
-		return VerificationKey{}, err
+func (s *StaticKeySet) Resolve(_ context.Context, h Header) (VerificationKey, error) {
+	if s == nil {
+		return VerificationKey{}, fmt.Errorf("%w: key set is nil", ErrInvalidConfig)
 	}
-	if s == nil || (s.anonymous == nil && len(s.keys) == 0) {
-		return VerificationKey{}, fmt.Errorf("%w: static key set is not initialized", ErrInvalidConfig)
-	}
-
 	if s.anonymous != nil {
-		return s.anonymous.Resolve(ctx, header)
+		return s.anonymous.Resolve(context.Background(), h)
 	}
-	if header.KeyID == "" {
+	if h.KeyID == "" {
 		return VerificationKey{}, ErrMissingKeyID
 	}
-
-	key, exists := s.keys[header.KeyID]
-	if !exists {
-		return VerificationKey{}, fmt.Errorf("%w: %q", ErrUnknownKey, header.KeyID)
+	k, ok := s.named[h.KeyID]
+	if !ok {
+		return VerificationKey{}, ErrUnknownKey
 	}
-	if key.algorithm != header.Algorithm {
-		return VerificationKey{}, fmt.Errorf(
-			"%w: key %q uses %s, token uses %s",
-			ErrUnexpectedAlgorithm,
-			header.KeyID,
-			key.algorithm,
-			header.Algorithm,
-		)
+	if h.Algorithm != k.method.Alg() {
+		return VerificationKey{}, ErrUnexpectedAlgorithm
 	}
-
-	return key.clone(), nil
-}
-
-func validatedVerificationKey(key VerificationKey) (VerificationKey, error) {
-	if err := validateKeyID(key.id); err != nil {
-		return VerificationKey{}, err
-	}
-	if key.value == nil {
-		return VerificationKey{}, fmt.Errorf("%w: verification key is not initialized", ErrInvalidKey)
-	}
-	if _, err := key.algorithm.spec(); err != nil {
-		return VerificationKey{}, err
-	}
-
-	return key.clone(), nil
+	return k.clone(), nil
 }

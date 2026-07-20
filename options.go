@@ -3,17 +3,19 @@ package xjwt
 import (
 	"fmt"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
-	jwtv5 "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // SignerOption configures Signer.
-type SignerOption interface{ applySigner(*signerConfig) error }
+type SignerOption interface {
+	applySigner(*signerConfig) error
+}
 
 // VerifierOption configures Verifier.
-type VerifierOption interface{ applyVerifier(*verifierConfig) error }
+type VerifierOption interface {
+	applyVerifier(*verifierConfig) error
+}
 
 // Option configures both Signer and Verifier.
 type Option interface {
@@ -22,338 +24,417 @@ type Option interface {
 }
 
 type signerConfig struct {
-	tokenType   string
-	includeType bool
-	contentType string
-	maxSize     int
+	typ        string
+	includeTyp bool
+	cty        string
+	maxSize    int
 }
 
+type audienceMode uint8
+
+const (
+	audienceAny audienceMode = iota
+	audienceAll
+)
+
 type verifierConfig struct {
-	algorithms          []Algorithm
-	expectedType        string
-	expectedContentType string
-	issuer              string
-	audiences           []string
-	requireAllAudiences bool
-	subject             string
-	leeway              time.Duration
-	clock               func() time.Time
-	maxSize             int
-	requireExp          bool
-	requireNbf          bool
-	validateIat         bool
-	requireIat          bool
-	maxLifetime         time.Duration
-	maxTokenAge         time.Duration
-	requiredClaims      []string
+	methods []jwt.SigningMethod
+
+	issuer       string
+	audiences    []string
+	audienceMode audienceMode
+	subject      string
+	leeway       time.Duration
+	clock        func() time.Time
+
+	typ string
+	cty string
+
+	maxSize     int
+	maxLifetime time.Duration
+	maxAge      time.Duration
+
+	requireExp  bool
+	requireNBF  bool
+	validateIAT bool
+	requireIAT  bool
+
+	requiredClaims []string
 }
 
 type typeOption string
 
-// WithType makes a Signer emit typ and makes a Verifier require the same exact
-// typ value.
-func WithType(value string) Option { return typeOption(value) }
-func (o typeOption) applySigner(config *signerConfig) error {
-	if err := validateHeaderValue("typ", string(o), maxTypeLength); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+// WithType sets typ when signing and requires the same typ when verifying.
+func WithType(value string) Option {
+	return typeOption(value)
+}
+
+func (option typeOption) applySigner(config *signerConfig) error {
+	if option == "" {
+		return fmt.Errorf("%w: typ is empty", ErrInvalidConfig)
 	}
-	config.tokenType, config.includeType = string(o), true
+
+	config.typ = string(option)
+	config.includeTyp = true
+
 	return nil
 }
-func (o typeOption) applyVerifier(config *verifierConfig) error {
-	if err := validateHeaderValue("typ", string(o), maxTypeLength); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+
+func (option typeOption) applyVerifier(config *verifierConfig) error {
+	if option == "" {
+		return fmt.Errorf("%w: typ is empty", ErrInvalidConfig)
 	}
-	config.expectedType = string(o)
+
+	config.typ = string(option)
+
 	return nil
 }
 
 type withoutTypeOption struct{}
 
-// WithoutType disables the default typ=JWT header emitted by Signer.
-func WithoutType() SignerOption { return withoutTypeOption{} }
+// WithoutType omits typ from newly signed JWTs.
+func WithoutType() SignerOption {
+	return withoutTypeOption{}
+}
+
 func (withoutTypeOption) applySigner(config *signerConfig) error {
-	config.tokenType, config.includeType = "", false
+	config.typ = ""
+	config.includeTyp = false
+
 	return nil
 }
 
 type contentTypeOption string
 
-// WithContentType makes a Signer emit cty and makes a Verifier require the same
-// exact cty value.
-func WithContentType(value string) Option { return contentTypeOption(value) }
-func (o contentTypeOption) applySigner(config *signerConfig) error {
-	if err := validateHeaderValue("cty", string(o), maxContentTypeLength); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+// WithContentType sets cty when signing and requires the same cty when verifying.
+func WithContentType(value string) Option {
+	return contentTypeOption(value)
+}
+
+func (option contentTypeOption) applySigner(config *signerConfig) error {
+	if option == "" {
+		return fmt.Errorf("%w: cty is empty", ErrInvalidConfig)
 	}
-	config.contentType = string(o)
+
+	config.cty = string(option)
+
 	return nil
 }
-func (o contentTypeOption) applyVerifier(config *verifierConfig) error {
-	if err := validateHeaderValue("cty", string(o), maxContentTypeLength); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+
+func (option contentTypeOption) applyVerifier(config *verifierConfig) error {
+	if option == "" {
+		return fmt.Errorf("%w: cty is empty", ErrInvalidConfig)
 	}
-	config.expectedContentType = string(o)
+
+	config.cty = string(option)
+
 	return nil
 }
 
 type maxTokenSizeOption int
 
-// WithMaxTokenSize configures the maximum compact JWT size for a Signer or
-// Verifier.
-func WithMaxTokenSize(size int) Option { return maxTokenSizeOption(size) }
-func (o maxTokenSizeOption) applySigner(config *signerConfig) error {
-	if o <= 0 {
-		return fmt.Errorf("%w: maximum token size must be positive", ErrInvalidConfig)
-	}
-	config.maxSize = int(o)
-	return nil
+// WithMaxTokenSize changes the maximum compact JWT size accepted or produced.
+func WithMaxTokenSize(size int) Option {
+	return maxTokenSizeOption(size)
 }
-func (o maxTokenSizeOption) applyVerifier(config *verifierConfig) error {
-	if o <= 0 {
-		return fmt.Errorf("%w: maximum token size must be positive", ErrInvalidConfig)
+
+func (option maxTokenSizeOption) applySigner(config *signerConfig) error {
+	if option <= 0 {
+		return fmt.Errorf("%w: max token size must be positive", ErrInvalidConfig)
 	}
-	config.maxSize = int(o)
+
+	config.maxSize = int(option)
+
 	return nil
 }
 
-type algorithmsOption []Algorithm
+func (option maxTokenSizeOption) applyVerifier(config *verifierConfig) error {
+	if option <= 0 {
+		return fmt.Errorf("%w: max token size must be positive", ErrInvalidConfig)
+	}
 
-// WithAlgorithms configures the verifier algorithm allowlist. This option is
-// mandatory.
-func WithAlgorithms(algorithms ...Algorithm) VerifierOption {
-	return algorithmsOption(append([]Algorithm(nil), algorithms...))
+	config.maxSize = int(option)
+
+	return nil
 }
-func (o algorithmsOption) applyVerifier(config *verifierConfig) error {
-	if len(o) == 0 {
-		return fmt.Errorf("%w: at least one algorithm is required", ErrInvalidConfig)
+
+type methodsOption []jwt.SigningMethod
+
+// WithMethods sets the only signing methods accepted by Verifier.
+func WithMethods(methods ...jwt.SigningMethod) VerifierOption {
+	return methodsOption(append([]jwt.SigningMethod(nil), methods...))
+}
+
+func (option methodsOption) applyVerifier(config *verifierConfig) error {
+	if len(option) == 0 {
+		return fmt.Errorf("%w: at least one signing method is required", ErrInvalidConfig)
 	}
-	seen := make(map[Algorithm]struct{}, len(o))
-	algorithms := make([]Algorithm, 0, len(o))
-	for _, algorithm := range o {
-		if _, err := algorithm.spec(); err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+
+	seen := make(map[string]struct{}, len(option))
+	methods := make([]jwt.SigningMethod, 0, len(option))
+
+	for _, method := range option {
+		if method == nil || method.Alg() == "" {
+			return fmt.Errorf("%w: invalid signing method", ErrInvalidConfig)
 		}
-		if _, exists := seen[algorithm]; exists {
-			continue
+		if _, exists := seen[method.Alg()]; exists {
+			return fmt.Errorf("%w: duplicate signing method %q", ErrInvalidConfig, method.Alg())
 		}
-		seen[algorithm] = struct{}{}
-		algorithms = append(algorithms, algorithm)
+
+		seen[method.Alg()] = struct{}{}
+		methods = append(methods, method)
 	}
-	config.algorithms = algorithms
+
+	config.methods = methods
+
 	return nil
 }
 
 type issuerOption string
 
-// WithIssuer requires the exact iss claim.
-func WithIssuer(issuer string) VerifierOption { return issuerOption(issuer) }
-func (o issuerOption) applyVerifier(config *verifierConfig) error {
-	if err := validateClaimString("issuer", string(o)); err != nil {
-		return err
+// WithIssuer requires an exact iss claim.
+func WithIssuer(issuer string) VerifierOption {
+	return issuerOption(issuer)
+}
+
+func (option issuerOption) applyVerifier(config *verifierConfig) error {
+	if option == "" {
+		return fmt.Errorf("%w: issuer is empty", ErrInvalidConfig)
 	}
-	config.issuer = string(o)
+
+	config.issuer = string(option)
+
 	return nil
 }
 
 type audienceOption struct {
-	values     []string
-	requireAll bool
+	values []string
+	mode   audienceMode
 }
 
-// WithAudience requires at least one configured audience in aud.
+// WithAudience requires at least one of the supplied audiences.
 func WithAudience(audiences ...string) VerifierOption {
-	return audienceOption{values: append([]string(nil), audiences...)}
+	return audienceOption{
+		values: append([]string(nil), audiences...),
+		mode:   audienceAny,
+	}
 }
 
-// WithAllAudiences requires all configured audiences in aud.
+// WithAllAudiences requires every supplied audience.
 func WithAllAudiences(audiences ...string) VerifierOption {
-	return audienceOption{values: append([]string(nil), audiences...), requireAll: true}
+	return audienceOption{
+		values: append([]string(nil), audiences...),
+		mode:   audienceAll,
+	}
 }
-func (o audienceOption) applyVerifier(config *verifierConfig) error {
-	if len(o.values) == 0 {
-		return fmt.Errorf("%w: at least one audience is required", ErrInvalidConfig)
+
+func (option audienceOption) applyVerifier(config *verifierConfig) error {
+	values, err := validateUniqueStrings("audience", option.values)
+	if err != nil {
+		return err
 	}
-	for _, audience := range o.values {
-		if err := validateClaimString("audience", audience); err != nil {
-			return err
-		}
-	}
-	config.audiences = append([]string(nil), o.values...)
-	config.requireAllAudiences = o.requireAll
+
+	config.audiences = values
+	config.audienceMode = option.mode
+
 	return nil
 }
 
 type subjectOption string
 
-// WithSubject requires the exact sub claim.
-func WithSubject(subject string) VerifierOption { return subjectOption(subject) }
-func (o subjectOption) applyVerifier(config *verifierConfig) error {
-	if err := validateClaimString("subject", string(o)); err != nil {
-		return err
+// WithSubject requires an exact sub claim.
+func WithSubject(subject string) VerifierOption {
+	return subjectOption(subject)
+}
+
+func (option subjectOption) applyVerifier(config *verifierConfig) error {
+	if option == "" {
+		return fmt.Errorf("%w: subject is empty", ErrInvalidConfig)
 	}
-	config.subject = string(o)
+
+	config.subject = string(option)
+
 	return nil
 }
 
 type leewayOption time.Duration
 
-// WithLeeway configures clock-skew tolerance.
-func WithLeeway(leeway time.Duration) VerifierOption { return leewayOption(leeway) }
-func (o leewayOption) applyVerifier(config *verifierConfig) error {
-	if o < 0 {
+// WithLeeway allows the given clock-skew window for time-based claims.
+func WithLeeway(leeway time.Duration) VerifierOption {
+	return leewayOption(leeway)
+}
+
+func (option leewayOption) applyVerifier(config *verifierConfig) error {
+	if option < 0 {
 		return fmt.Errorf("%w: leeway must not be negative", ErrInvalidConfig)
 	}
-	config.leeway = time.Duration(o)
+
+	config.leeway = time.Duration(option)
+
 	return nil
 }
 
-type clockOption struct{ clock func() time.Time }
+type clockOption struct {
+	clock func() time.Time
+}
 
-// WithClock configures the verifier clock.
-func WithClock(clock func() time.Time) VerifierOption { return clockOption{clock: clock} }
-func (o clockOption) applyVerifier(config *verifierConfig) error {
-	if o.clock == nil {
+// WithClock replaces the clock used by registered-claim and lifetime validation.
+func WithClock(clock func() time.Time) VerifierOption {
+	return clockOption{clock: clock}
+}
+
+func (option clockOption) applyVerifier(config *verifierConfig) error {
+	if option.clock == nil {
 		return fmt.Errorf("%w: clock is nil", ErrInvalidConfig)
 	}
-	config.clock = o.clock
+
+	config.clock = option.clock
+
 	return nil
 }
 
-type expirationOption bool
+type requireExpirationOption struct{}
 
-// RequireExpiration requires exp. This is the default.
-func RequireExpiration() VerifierOption { return expirationOption(true) }
+// RequireExpiration requires exp. This is already the secure default.
+func RequireExpiration() VerifierOption {
+	return requireExpirationOption{}
+}
 
-// AllowMissingExpiration permits tokens without exp.
-func AllowMissingExpiration() VerifierOption { return expirationOption(false) }
-func (o expirationOption) applyVerifier(config *verifierConfig) error {
-	config.requireExp = bool(o)
+func (requireExpirationOption) applyVerifier(config *verifierConfig) error {
+	config.requireExp = true
+
+	return nil
+}
+
+type allowMissingExpirationOption struct{}
+
+// AllowMissingExpiration disables the secure default requiring exp.
+func AllowMissingExpiration() VerifierOption {
+	return allowMissingExpirationOption{}
+}
+
+func (allowMissingExpirationOption) applyVerifier(config *verifierConfig) error {
+	config.requireExp = false
+
 	return nil
 }
 
 type requireNotBeforeOption struct{}
 
 // RequireNotBefore requires nbf in addition to validating it.
-func RequireNotBefore() VerifierOption { return requireNotBeforeOption{} }
+func RequireNotBefore() VerifierOption {
+	return requireNotBeforeOption{}
+}
+
 func (requireNotBeforeOption) applyVerifier(config *verifierConfig) error {
-	config.requireNbf = true
+	config.requireNBF = true
+
 	return nil
 }
 
-type issuedAtOption struct{ require bool }
+type validateIssuedAtOption struct{}
 
-// ValidateIssuedAt validates iat when present.
-func ValidateIssuedAt() VerifierOption { return issuedAtOption{} }
+// ValidateIssuedAt validates iat when it is present.
+func ValidateIssuedAt() VerifierOption {
+	return validateIssuedAtOption{}
+}
 
-// RequireIssuedAt requires iat and validates that it is not in the future.
-func RequireIssuedAt() VerifierOption { return issuedAtOption{require: true} }
-func (o issuedAtOption) applyVerifier(config *verifierConfig) error {
-	config.validateIat = true
-	if o.require {
-		config.requireIat = true
-	}
+func (validateIssuedAtOption) applyVerifier(config *verifierConfig) error {
+	config.validateIAT = true
+
+	return nil
+}
+
+type requireIssuedAtOption struct{}
+
+// RequireIssuedAt requires iat and validates it.
+func RequireIssuedAt() VerifierOption {
+	return requireIssuedAtOption{}
+}
+
+func (requireIssuedAtOption) applyVerifier(config *verifierConfig) error {
+	config.validateIAT = true
+	config.requireIAT = true
+
 	return nil
 }
 
 type maxLifetimeOption time.Duration
 
-// WithMaxLifetime requires exp and iat and limits exp-iat.
-func WithMaxLifetime(lifetime time.Duration) VerifierOption { return maxLifetimeOption(lifetime) }
-func (o maxLifetimeOption) applyVerifier(config *verifierConfig) error {
-	if o <= 0 {
-		return fmt.Errorf("%w: maximum lifetime must be positive", ErrInvalidConfig)
+// WithMaxLifetime limits exp-iat and therefore requires iat and exp.
+func WithMaxLifetime(lifetime time.Duration) VerifierOption {
+	return maxLifetimeOption(lifetime)
+}
+
+func (option maxLifetimeOption) applyVerifier(config *verifierConfig) error {
+	if option <= 0 {
+		return fmt.Errorf("%w: max lifetime must be positive", ErrInvalidConfig)
 	}
-	config.maxLifetime = time.Duration(o)
-	config.requireExp, config.validateIat, config.requireIat = true, true, true
+
+	config.maxLifetime = time.Duration(option)
+	config.requireExp = true
+	config.validateIAT = true
+	config.requireIAT = true
+
 	return nil
 }
 
 type maxTokenAgeOption time.Duration
 
-// WithMaxTokenAge requires iat and limits token age independently of exp.
-func WithMaxTokenAge(age time.Duration) VerifierOption { return maxTokenAgeOption(age) }
-func (o maxTokenAgeOption) applyVerifier(config *verifierConfig) error {
-	if o <= 0 {
-		return fmt.Errorf("%w: maximum token age must be positive", ErrInvalidConfig)
+// WithMaxTokenAge limits now-iat and therefore requires iat.
+func WithMaxTokenAge(age time.Duration) VerifierOption {
+	return maxTokenAgeOption(age)
+}
+
+func (option maxTokenAgeOption) applyVerifier(config *verifierConfig) error {
+	if option <= 0 {
+		return fmt.Errorf("%w: max token age must be positive", ErrInvalidConfig)
 	}
-	config.maxTokenAge = time.Duration(o)
-	config.validateIat, config.requireIat = true, true
+
+	config.maxAge = time.Duration(option)
+	config.validateIAT = true
+	config.requireIAT = true
+
 	return nil
 }
 
 type requiredClaimsOption []string
 
-// WithRequiredClaims requires the listed top-level claim names to be present
-// and non-null.
+// WithRequiredClaims requires the listed JWT claim members to be present.
 func WithRequiredClaims(names ...string) VerifierOption {
 	return requiredClaimsOption(append([]string(nil), names...))
 }
-func (o requiredClaimsOption) applyVerifier(config *verifierConfig) error {
-	if len(o) == 0 {
-		return fmt.Errorf("%w: at least one required claim is needed", ErrInvalidConfig)
+
+func (option requiredClaimsOption) applyVerifier(config *verifierConfig) error {
+	names, err := validateUniqueStrings("required claim", option)
+	if err != nil {
+		return err
 	}
-	seen := make(map[string]struct{}, len(o))
-	claims := make([]string, 0, len(o))
-	for _, name := range o {
-		if err := validateClaimName(name); err != nil {
-			return err
-		}
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		claims = append(claims, name)
-	}
-	config.requiredClaims = claims
+
+	config.requiredClaims = names
+
 	return nil
 }
 
-func validatorOptions(config verifierConfig) []jwtv5.ParserOption {
-	options := []jwtv5.ParserOption{jwtv5.WithTimeFunc(config.clock)}
-	if config.leeway != 0 {
-		options = append(options, jwtv5.WithLeeway(config.leeway))
+func validateUniqueStrings(name string, values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%w: at least one %s is required", ErrInvalidConfig, name)
 	}
-	if config.requireExp {
-		options = append(options, jwtv5.WithExpirationRequired())
-	}
-	if config.requireNbf {
-		options = append(options, jwtv5.WithNotBeforeRequired())
-	}
-	if config.validateIat {
-		options = append(options, jwtv5.WithIssuedAt())
-	}
-	if config.issuer != "" {
-		options = append(options, jwtv5.WithIssuer(config.issuer))
-	}
-	if len(config.audiences) != 0 {
-		if config.requireAllAudiences {
-			options = append(options, jwtv5.WithAllAudiences(config.audiences...))
-		} else {
-			options = append(options, jwtv5.WithAudience(config.audiences...))
-		}
-	}
-	if config.subject != "" {
-		options = append(options, jwtv5.WithSubject(config.subject))
-	}
-	return options
-}
 
-func validateClaimString(name, value string) error {
-	if value == "" || !utf8.ValidString(value) {
-		return fmt.Errorf("%w: %s must be a non-empty UTF-8 string", ErrInvalidConfig, name)
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("%w: %s must not contain control characters", ErrInvalidConfig, name)
-		}
-	}
-	return nil
-}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
 
-func validateClaimName(name string) error {
-	if len(name) > 256 {
-		return fmt.Errorf("%w: claim name exceeds 256 bytes", ErrInvalidConfig)
+	for _, value := range values {
+		if value == "" {
+			return nil, fmt.Errorf("%w: %s contains an empty value", ErrInvalidConfig, name)
+		}
+		if _, exists := seen[value]; exists {
+			return nil, fmt.Errorf("%w: duplicate %s %q", ErrInvalidConfig, name, value)
+		}
+
+		seen[value] = struct{}{}
+		result = append(result, value)
 	}
-	return validateClaimString("claim name", name)
+
+	return result, nil
 }

@@ -5,203 +5,116 @@ import (
 	"encoding/json"
 	"fmt"
 
-	xjwt "github.com/mkbeh/xjwt"
-	"github.com/mkbeh/xjwt/internal/josejson"
-	"github.com/mkbeh/xjwt/jwk"
+	"github.com/go-jose/go-jose/v4
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjwt"
 )
 
-// DefaultMaxKeys is the default maximum number of JWK values accepted from a
-// serialized JWK Set.
 const DefaultMaxKeys = 100
 
-// Set is an immutable collection of public signature-verification JWKs. It
-// implements xjwt.KeyResolver.
 type Set struct {
-	keys []jwk.Key
-	byID map[string]int
+	document jose.JSONWebKeySet
+	keys     *xjwt.StaticKeySet
 }
 
-var _ xjwt.KeyResolver = (*Set)(nil)
-
-// New creates an immutable JWK Set. A single key may omit kid; every key in a
-// multi-key set must have a unique non-empty kid.
-func New(keys ...jwk.Key) (*Set, error) {
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidSet, ErrNoUsableKeys)
-	}
-
-	set := &Set{
-		keys: make([]jwk.Key, len(keys)),
-		byID: make(map[string]int, len(keys)),
-	}
-	copy(set.keys, keys)
-
-	for index, key := range set.keys {
-		if err := key.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: key %d: %w", ErrInvalidSet, index, err)
-		}
-
-		id := key.ID()
-		if len(set.keys) > 1 && id == "" {
-			return nil, fmt.Errorf(
-				"%w: key %d has no kid in a multi-key set",
-				ErrInvalidSet,
-				index,
-			)
-		}
-		if _, duplicate := set.byID[id]; duplicate {
-			return nil, fmt.Errorf(
-				"%w: %w: %q",
-				ErrInvalidSet,
-				xjwt.ErrDuplicateKeyID,
-				id,
-			)
-		}
-
-		set.byID[id] = index
-	}
-
-	return set, nil
+func New(methods []jwt.SigningMethod, keys ...jose.JSONWebKey) (*Set, error) {
+	return newSet(methods, jose.JSONWebKeySet{Keys: append([]jose.JSONWebKey(nil), keys...)}, DefaultMaxKeys)
 }
-
-// Parse parses a JWK Set using DefaultMaxKeys. Unsupported or non-signature
-// keys are ignored, as permitted for mixed-use JWK Sets.
-func Parse(data []byte) (*Set, error) {
-	return ParseWithLimit(data, DefaultMaxKeys)
+func Parse(data []byte, methods ...jwt.SigningMethod) (*Set, error) {
+	return ParseWithLimit(data, DefaultMaxKeys, methods...)
 }
-
-// ParseWithLimit parses a JWK Set and rejects documents containing more than
-// maxKeys array entries. Unsupported or non-signature keys are ignored;
-// malformed supported signature keys fail the complete document.
-func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
-	if maxKeys <= 0 {
-		return nil, fmt.Errorf("%w: maximum key count must be positive", ErrInvalidSet)
+func ParseWithLimit(data []byte, max int, methods ...jwt.SigningMethod) (*Set, error) {
+	if max <= 0 {
+		return nil, fmt.Errorf("%w: max keys must be positive", xjwt.ErrInvalidConfig)
 	}
-
-	members, err := josejson.DecodeObject(data)
-	if err != nil {
-		return nil, fmt.Errorf("%w: decode object: %w", ErrInvalidSet, err)
+	var doc jose.JSONWebKeySet
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parse JWKS: %w", err)
 	}
-
-	rawKeys, exists := members["keys"]
-	if !exists {
-		return nil, fmt.Errorf("%w: missing keys member", ErrInvalidSet)
+	return newSet(methods, doc, max)
+}
+func FromStaticKeySet(set *xjwt.StaticKeySet) (*Set, error) {
+	if set == nil {
+		return nil, fmt.Errorf("%w: key set is nil", xjwt.ErrInvalidConfig)
 	}
+	keys := set.Keys()
+	doc := jose.JSONWebKeySet{Keys: make([]jose.JSONWebKey, 0, len(keys))}
+	methods := make([]jwt.SigningMethod, 0, len(keys))
+	for _, k := range keys {
+		raw := k.Key()
+		if _, ok := raw.([]byte); ok {
+			return nil, fmt.Errorf("%w: symmetric keys are not exported as public JWK", xjwt.ErrInvalidKey)
+		}
 
-	var encodedKeys []json.RawMessage
-	if err := json.Unmarshal(rawKeys, &encodedKeys); err != nil {
-		return nil, fmt.Errorf("%w: keys must be an array: %w", ErrInvalidSet, err)
-	}
-	if len(encodedKeys) > maxKeys {
-		return nil, fmt.Errorf(
-			"%w: %w: got %d, limit is %d",
-			ErrInvalidSet,
-			ErrTooManyKeys,
-			len(encodedKeys),
-			maxKeys,
-		)
-	}
+		v := jose.JSONWebKey{
+			Key:       raw,
+			KeyID:     k.ID(),
+			Algorithm: k.Method().Alg(),
+			Use:       "sig",
+		}
+		if !v.Valid() || !v.IsPublic() {
+			return nil, fmt.Errorf("%w: invalid public JWK", xjwt.ErrInvalidKey)
+		}
 
-	keys := make([]jwk.Key, 0, len(encodedKeys))
-	for index, encoded := range encodedKeys {
-		key, err := jwk.Parse(encoded)
+		doc.Keys = append(doc.Keys, v)
+		methods = append(methods, k.Method())
+	}
+	return newSet(methods, doc, DefaultMaxKeys)
+}
+func newSet(methods []jwt.SigningMethod, doc jose.JSONWebKeySet, max int) (*Set, error) {
+	if len(methods) == 0 {
+		return nil, fmt.Errorf("%w: at least one signing method is required", xjwt.ErrInvalidConfig)
+	}
+	if len(doc.Keys) == 0 {
+		return nil, fmt.Errorf("%w: JWKS contains no keys", xjwt.ErrInvalidKey)
+	}
+	if len(doc.Keys) > max {
+		return nil, fmt.Errorf("%w: JWKS contains too many keys", xjwt.ErrInvalidKey)
+	}
+	byAlg := map[string]jwt.SigningMethod{}
+	for _, m := range methods {
+		if m == nil {
+			return nil, fmt.Errorf("%w: nil signing method", xjwt.ErrInvalidConfig)
+		}
+		byAlg[m.Alg()] = m
+	}
+	verification := make([]xjwt.VerificationKey, 0, len(doc.Keys))
+	for _, k := range doc.Keys {
+		if !k.Valid() || !k.IsPublic() || k.Use != "" && k.Use != "sig" {
+			continue
+		}
+		m := byAlg[k.Algorithm]
+		if m == nil {
+			continue
+		}
+		if k.Algorithm != "" && k.Algorithm != m.Alg() {
+			return nil, xjwt.ErrUnexpectedAlgorithm
+		}
+		vk, err := xjwt.NewVerificationKey(k.KeyID, m, k.Key)
 		if err != nil {
-			if jwk.IsIgnorable(err) {
-				continue
-			}
-
-			return nil, fmt.Errorf("%w: key %d: %w", ErrInvalidSet, index, err)
+			return nil, err
 		}
-
-		keys = append(keys, key)
+		verification = append(verification, vk)
 	}
-
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidSet, ErrNoUsableKeys)
+	if len(verification) == 0 {
+		return nil, fmt.Errorf("%w: JWKS contains no usable verification keys", xjwt.ErrInvalidKey)
 	}
-
-	return New(keys...)
+	ks, err := xjwt.NewStaticKeySet(verification...)
+	if err != nil {
+		return nil, err
+	}
+	return &Set{document: doc, keys: ks}, nil
 }
-
-// Len returns the number of usable keys in the set.
-func (s *Set) Len() int {
+func (s *Set) Resolve(ctx context.Context, h xjwt.Header) (xjwt.VerificationKey, error) {
 	if s == nil {
-		return 0
+		return xjwt.VerificationKey{}, fmt.Errorf("%w: JWKS is nil", xjwt.ErrInvalidConfig)
 	}
-
-	return len(s.keys)
+	return s.keys.Resolve(ctx, h)
 }
-
-// Keys returns a copy of the immutable JWK values in declaration order.
-func (s *Set) Keys() []jwk.Key {
+func (s *Set) Keys() []jose.JSONWebKey {
 	if s == nil {
 		return nil
 	}
-
-	result := make([]jwk.Key, len(s.keys))
-	copy(result, s.keys)
-
-	return result
+	return append([]jose.JSONWebKey(nil), s.document.Keys...)
 }
-
-// Resolve selects a key by exact kid and binds it to the token algorithm.
-func (s *Set) Resolve(
-	ctx context.Context,
-	header xjwt.Header,
-) (xjwt.VerificationKey, error) {
-	if s == nil || len(s.keys) == 0 || len(s.byID) == 0 {
-		return xjwt.VerificationKey{}, xjwt.ErrInvalidConfig
-	}
-	if err := ctx.Err(); err != nil {
-		return xjwt.VerificationKey{}, err
-	}
-
-	if header.KeyID == "" {
-		index, exists := s.byID[""]
-		if !exists {
-			return xjwt.VerificationKey{}, xjwt.ErrMissingKeyID
-		}
-
-		return s.keys[index].VerificationKey(header.Algorithm)
-	}
-
-	index, exists := s.byID[header.KeyID]
-	if !exists {
-		return xjwt.VerificationKey{}, xjwt.ErrUnknownKey
-	}
-
-	return s.keys[index].VerificationKey(header.Algorithm)
-}
-
-// MarshalJSON serializes the set as {"keys":[...]}.
-func (s *Set) MarshalJSON() ([]byte, error) {
-	if s == nil || len(s.keys) == 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidSet, ErrNoUsableKeys)
-	}
-
-	return json.Marshal(struct {
-		Keys []jwk.Key `json:"keys"`
-	}{
-		Keys: s.Keys(),
-	})
-}
-
-// FromStaticKeySet creates a public JWK Set from an xjwt static verification
-// key set. Symmetric HMAC keys cannot be exported as public JWKs.
-func FromStaticKeySet(keySet *xjwt.StaticKeySet) (*Set, error) {
-	if keySet == nil || keySet.Len() == 0 {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidSet, ErrNoUsableKeys)
-	}
-
-	verificationKeys := keySet.Keys()
-	keys := make([]jwk.Key, 0, len(verificationKeys))
-	for index, verificationKey := range verificationKeys {
-		key, err := jwk.FromVerificationKey(verificationKey)
-		if err != nil {
-			return nil, fmt.Errorf("%w: key %d: %w", ErrInvalidSet, index, err)
-		}
-		keys = append(keys, key)
-	}
-
-	return New(keys...)
-}
+func (s Set) MarshalJSON() ([]byte, error) { return json.Marshal(s.document) }

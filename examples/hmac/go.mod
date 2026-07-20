@@ -1,4 +1,4 @@
-module basic
+module hmac
 
 go 1.26
 
