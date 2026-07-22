@@ -1,3 +1,3 @@
-# xjwt/jwks
+# jwks
 
 [TODO]
