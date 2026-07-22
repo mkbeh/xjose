@@ -7,12 +7,18 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-// Decrypted contains authenticated JWE header parameters and plaintext.
+// Decrypted contains the authenticated protected header and plaintext
+// produced by successful compact JWE decryption.
 type Decrypted struct {
 	Header    Header
 	Plaintext []byte
 }
 
+// Decrypter decrypts compact, single-recipient JWE tokens.
+//
+// The configured key management and content encryption algorithms are strict
+// allowlists. Tokens using any other algorithms are rejected before key
+// resolution.
 type Decrypter struct {
 	resolver           KeyResolver
 	keyAlgorithms      []jose.KeyAlgorithm
@@ -20,7 +26,7 @@ type Decrypter struct {
 	config             config
 }
 
-// NewDecrypter creates a decrypter using one static decryption key.
+// NewDecrypter creates a Decrypter backed by static key material.
 func NewDecrypter(
 	key any,
 	keyAlgorithms []jose.KeyAlgorithm,
@@ -44,7 +50,12 @@ func NewDecrypter(
 	)
 }
 
-// NewDecrypterWithResolver creates a decrypter using a dynamic key resolver.
+// NewDecrypterWithResolver creates a Decrypter that resolves key material for
+// each token.
+//
+// The resolver is called after parsing and policy validation but before the
+// protected header is authenticated. It must treat Header as untrusted routing
+// input and return only trusted key material.
 func NewDecrypterWithResolver(
 	resolver KeyResolver,
 	keyAlgorithms []jose.KeyAlgorithm,
@@ -109,7 +120,7 @@ func NewDecrypterWithResolver(
 	}, nil
 }
 
-// Decrypt decrypts a compact JWE and returns its plaintext.
+// Decrypt decrypts and authenticates a compact JWE and returns its plaintext.
 func (decrypter *Decrypter) Decrypt(ctx context.Context, raw string) ([]byte, error) {
 	decrypted, err := decrypter.DecryptToken(ctx, raw)
 	if err != nil {
@@ -119,29 +130,11 @@ func (decrypter *Decrypter) Decrypt(ctx context.Context, raw string) ([]byte, er
 	return decrypted.Plaintext, nil
 }
 
-// DecryptToken decrypts a compact JWE and returns its authenticated header and plaintext.
+// DecryptToken decrypts and authenticates a compact JWE and returns its
+// protected header and plaintext.
 func (decrypter *Decrypter) DecryptToken(ctx context.Context, raw string) (Decrypted, error) {
-	if decrypter == nil ||
-		decrypter.resolver == nil ||
-		len(decrypter.keyAlgorithms) == 0 ||
-		len(decrypter.contentEncryptions) == 0 {
-		return Decrypted{}, fmt.Errorf(
-			"%w: decrypter is uninitialized",
-			ErrInvalidConfig,
-		)
-	}
-
-	if raw == "" {
-		return Decrypted{}, ErrMissingToken
-	}
-
-	if len(raw) > decrypter.config.maxTokenSize {
-		return Decrypted{}, fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrTokenTooLarge,
-			len(raw),
-			decrypter.config.maxTokenSize,
-		)
+	if err := decrypter.validateDecryptInput(raw); err != nil {
+		return Decrypted{}, err
 	}
 
 	object, err := jose.ParseEncryptedCompact(
@@ -162,7 +155,8 @@ func (decrypter *Decrypter) DecryptToken(ctx context.Context, raw string) (Decry
 		return Decrypted{}, err
 	}
 
-	// Reject unsupported typ, cty, or zip before resolving the key.
+	// The header is still unauthenticated. Reject policy violations before key
+	// resolution so invalid tokens do not trigger external key lookups.
 	if err := decrypter.validatePolicy(header); err != nil {
 		return Decrypted{}, err
 	}
@@ -194,6 +188,30 @@ func (decrypter *Decrypter) DecryptToken(ctx context.Context, raw string) (Decry
 		Header:    header,
 		Plaintext: plaintext,
 	}, nil
+}
+
+func (decrypter *Decrypter) validateDecryptInput(raw string) error {
+	if decrypter == nil {
+		return fmt.Errorf(
+			"%w: decrypter is uninitialized",
+			ErrInvalidConfig,
+		)
+	}
+
+	if raw == "" {
+		return ErrMissingToken
+	}
+
+	if len(raw) > decrypter.config.maxTokenSize {
+		return fmt.Errorf(
+			"%w: got %d bytes, limit is %d",
+			ErrTokenTooLarge,
+			len(raw),
+			decrypter.config.maxTokenSize,
+		)
+	}
+
+	return nil
 }
 
 func (decrypter *Decrypter) validatePolicy(header Header) error {

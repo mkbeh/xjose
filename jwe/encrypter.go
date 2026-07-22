@@ -7,12 +7,18 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
+// Encrypter encrypts plaintext as compact, single-recipient JWE.
+//
+// The recipient, content encryption algorithm, protected header options, and
+// size limits are fixed when the Encrypter is created. A fresh go-jose backend
+// is created for each encryption operation.
 type Encrypter struct {
 	recipient  jose.Recipient
 	encryption jose.ContentEncryption
 	config     config
 }
 
+// NewEncrypter creates an Encrypter for compact, single-recipient JWE.
 func NewEncrypter(
 	recipient jose.Recipient,
 	encryption jose.ContentEncryption,
@@ -47,9 +53,9 @@ func NewEncrypter(
 		return nil, err
 	}
 
-	// Validate the complete JOSE configuration at construction time. A fresh
-	// backend is created for each Encrypt call because some go-jose encrypters
-	// contain mutable per-message state.
+	// Validate key and algorithm compatibility at construction time. The
+	// backend is discarded because Encrypt creates a fresh instance for every
+	// message.
 	if _, err := newEncrypter(recipient, encryption, config); err != nil {
 		return nil, fmt.Errorf(
 			"%w: create encrypter: %w",
@@ -93,6 +99,7 @@ func newEncrypter(
 	return jose.NewEncrypter(encryption, recipient, options)
 }
 
+// Encrypt encrypts non-empty plaintext and returns compact JWE serialization.
 func (encrypter *Encrypter) Encrypt(plaintext []byte) (string, error) {
 	if encrypter == nil {
 		return "", fmt.Errorf(

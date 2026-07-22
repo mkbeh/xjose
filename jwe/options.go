@@ -95,9 +95,21 @@ func WithCompression(algorithm jose.CompressionAlgorithm) Option {
 }
 
 func (option compressionOption) apply(config *config) error {
-	config.compression = jose.CompressionAlgorithm(option)
+	algorithm := jose.CompressionAlgorithm(option)
 
-	return nil
+	switch algorithm {
+	case jose.NONE, jose.DEFLATE:
+		config.compression = algorithm
+
+		return nil
+
+	default:
+		return fmt.Errorf(
+			"%w: unsupported compression algorithm %q",
+			ErrInvalidConfig,
+			algorithm,
+		)
+	}
 }
 
 type maxTokenSizeOption int

@@ -15,17 +15,42 @@ const (
 	headerCritical    jose.HeaderKey = "crit"
 )
 
-// Header contains the protected JOSE header parameters used by the decrypter.
+// Header is a normalized view of JOSE header parameters associated with a JWE.
+//
+// Header values passed to a KeyResolver must be treated as untrusted until
+// decryption and authentication succeed. Compact JWE carries only a protected
+// header. JWE JSON Serialization may also contribute shared and recipient-
+// specific unprotected parameters, so callers must not assume every field in a
+// merged Header is integrity protected.
 type Header struct {
-	Algorithm    jose.KeyAlgorithm
-	Encryption   jose.ContentEncryption
-	Compression  jose.CompressionAlgorithm
-	KeyID        string
-	Type         string
-	ContentType  string
+	// Algorithm is the key management algorithm from the alg parameter.
+	Algorithm jose.KeyAlgorithm
+
+	// Encryption is the content encryption algorithm from the enc parameter.
+	Encryption jose.ContentEncryption
+
+	// Compression is the plaintext compression algorithm from the zip
+	// parameter. jose.NONE means that compression is not declared.
+	Compression jose.CompressionAlgorithm
+
+	// KeyID is the key identifier from the kid parameter.
+	KeyID string
+
+	// Type is the media type from the typ parameter.
+	Type string
+
+	// ContentType is the media type of the secured content from the cty
+	// parameter.
+	ContentType string
+
+	// ExtraHeaders preserves the raw parameter map exposed by go-jose,
+	// including custom parameters. The map is shallow-copied before it is
+	// returned, but mutable values stored in it are not deep-copied.
 	ExtraHeaders map[jose.HeaderKey]any
 }
 
+// parseHeader converts a go-jose header into Header and validates the
+// structurally supported parameter subset.
 func parseHeader(header jose.Header) (Header, error) {
 	if _, exists := header.ExtraHeaders[headerCritical]; exists {
 		return Header{}, fmt.Errorf(
