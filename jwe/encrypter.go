@@ -86,11 +86,15 @@ func newEncrypter(
 		)
 	}
 
+	for name, value := range config.extraHeaders {
+		options.WithHeader(name, value)
+	}
+
 	return jose.NewEncrypter(encryption, recipient, options)
 }
 
-func (e *Encrypter) Encrypt(plaintext []byte) (string, error) {
-	if e == nil {
+func (encrypter *Encrypter) Encrypt(plaintext []byte) (string, error) {
+	if encrypter == nil {
 		return "", fmt.Errorf(
 			"%w: encrypter is uninitialized",
 			ErrInvalidConfig,
@@ -101,16 +105,16 @@ func (e *Encrypter) Encrypt(plaintext []byte) (string, error) {
 		return "", ErrMissingPlaintext
 	}
 
-	if len(plaintext) > e.config.maxPlaintextSize {
+	if len(plaintext) > encrypter.config.maxPlaintextSize {
 		return "", fmt.Errorf(
 			"%w: got %d bytes, limit is %d",
 			ErrPlaintextTooLarge,
 			len(plaintext),
-			e.config.maxPlaintextSize,
+			encrypter.config.maxPlaintextSize,
 		)
 	}
 
-	backend, err := newEncrypter(e.recipient, e.encryption, e.config)
+	backend, err := newEncrypter(encrypter.recipient, encrypter.encryption, encrypter.config)
 	if err != nil {
 		return "", fmt.Errorf(
 			"%w: create encrypter: %w",
@@ -137,12 +141,12 @@ func (e *Encrypter) Encrypt(plaintext []byte) (string, error) {
 		)
 	}
 
-	if len(raw) > e.config.maxTokenSize {
+	if len(raw) > encrypter.config.maxTokenSize {
 		return "", fmt.Errorf(
 			"%w: got %d bytes, limit is %d",
 			ErrTokenTooLarge,
 			len(raw),
-			e.config.maxTokenSize,
+			encrypter.config.maxTokenSize,
 		)
 	}
 

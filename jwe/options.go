@@ -33,6 +33,8 @@ type config struct {
 
 	maxTokenSize     int
 	maxPlaintextSize int
+
+	extraHeaders map[jose.HeaderKey]any
 }
 
 type typeOption string
@@ -139,6 +141,32 @@ func (option maxPlaintextSizeOption) apply(config *config) error {
 	}
 
 	config.maxPlaintextSize = size
+
+	return nil
+}
+
+type headerOption struct {
+	name  jose.HeaderKey
+	value any
+}
+
+// WithHeader adds an arbitrary value to the protected JWE header.
+//
+// The caller is responsible for avoiding incompatible or conflicting JOSE
+// header parameters.
+func WithHeader(name jose.HeaderKey, value any) Option {
+	return headerOption{
+		name:  name,
+		value: value,
+	}
+}
+
+func (option headerOption) apply(config *config) error {
+	if config.extraHeaders == nil {
+		config.extraHeaders = make(map[jose.HeaderKey]any)
+	}
+
+	config.extraHeaders[option.name] = option.value
 
 	return nil
 }

@@ -17,12 +17,13 @@ const (
 
 // Header contains the protected JOSE header parameters used by the decrypter.
 type Header struct {
-	Algorithm   jose.KeyAlgorithm
-	Encryption  jose.ContentEncryption
-	Compression jose.CompressionAlgorithm
-	KeyID       string
-	Type        string
-	ContentType string
+	Algorithm    jose.KeyAlgorithm
+	Encryption   jose.ContentEncryption
+	Compression  jose.CompressionAlgorithm
+	KeyID        string
+	Type         string
+	ContentType  string
+	ExtraHeaders map[jose.HeaderKey]any
 }
 
 func parseHeader(header jose.Header) (Header, error) {
@@ -86,18 +87,13 @@ func parseHeader(header jose.Header) (Header, error) {
 	}
 
 	return Header{
-		Algorithm: jose.KeyAlgorithm(
-			header.Algorithm,
-		),
-		Encryption: jose.ContentEncryption(
-			encryption,
-		),
-		Compression: jose.CompressionAlgorithm(
-			compression,
-		),
-		KeyID:       header.KeyID,
-		Type:        typ,
-		ContentType: contentType,
+		Algorithm:    jose.KeyAlgorithm(header.Algorithm),
+		Encryption:   jose.ContentEncryption(encryption),
+		Compression:  jose.CompressionAlgorithm(compression),
+		KeyID:        header.KeyID,
+		Type:         typ,
+		ContentType:  contentType,
+		ExtraHeaders: cloneExtraHeaders(header.ExtraHeaders),
 	}, nil
 }
 
@@ -138,4 +134,23 @@ func headerString(
 	}
 
 	return text, nil
+}
+
+func cloneExtraHeaders(
+	headers map[jose.HeaderKey]any,
+) map[jose.HeaderKey]any {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	result := make(
+		map[jose.HeaderKey]any,
+		len(headers),
+	)
+
+	for name, value := range headers {
+		result[name] = value
+	}
+
+	return result
 }
