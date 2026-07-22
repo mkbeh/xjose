@@ -1,9 +1,10 @@
 package xjwt
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 )
 
 type StaticKeySet struct {
@@ -11,73 +12,113 @@ type StaticKeySet struct {
 	named     map[string]VerificationKey
 }
 
+var _ KeyResolver = (*StaticKeySet)(nil)
+
 func NewStaticKeySet(keys ...VerificationKey) (*StaticKeySet, error) {
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("%w: at least one verification key is required", ErrInvalidConfig)
+		return nil, fmt.Errorf(
+			"%w: at least one verification key is required",
+			ErrInvalidConfig,
+		)
 	}
-	s := &StaticKeySet{named: make(map[string]VerificationKey, len(keys))}
-	for _, k := range keys {
-		if k.method == nil || k.key == nil {
-			return nil, fmt.Errorf("%w: uninitialized verification key", ErrInvalidKey)
+
+	keySet := &StaticKeySet{
+		named: make(map[string]VerificationKey, len(keys)),
+	}
+
+	for _, key := range keys {
+		if key.method == nil || key.key == nil {
+			return nil, fmt.Errorf(
+				"%w: uninitialized verification key",
+				ErrInvalidKey,
+			)
 		}
-		if k.id == "" {
+
+		if key.id == "" {
 			if len(keys) != 1 {
-				return nil, fmt.Errorf("%w: anonymous key cannot be mixed with other keys", ErrInvalidConfig)
+				return nil, fmt.Errorf(
+					"%w: anonymous key cannot be mixed with other keys",
+					ErrInvalidConfig,
+				)
 			}
-			c := k.clone()
-			s.anonymous = &c
+
+			keySet.anonymous = new(key)
 			continue
 		}
-		if _, ok := s.named[k.id]; ok {
-			return nil, fmt.Errorf("%w: %q", ErrDuplicateKeyID, k.id)
+
+		if _, exists := keySet.named[key.id]; exists {
+			return nil, fmt.Errorf(
+				"%w: %q",
+				ErrDuplicateKeyID,
+				key.id,
+			)
 		}
-		s.named[k.id] = k.clone()
+
+		keySet.named[key.id] = key
 	}
-	return s, nil
+
+	return keySet, nil
 }
+
 func (s *StaticKeySet) Len() int {
 	if s == nil {
 		return 0
 	}
+
 	if s.anonymous != nil {
 		return 1
 	}
+
 	return len(s.named)
 }
+
 func (s *StaticKeySet) Keys() []VerificationKey {
 	if s == nil {
 		return nil
 	}
+
 	if s.anonymous != nil {
-		return []VerificationKey{s.anonymous.clone()}
+		return []VerificationKey{
+			*s.anonymous,
+		}
 	}
-	ids := make([]string, 0, len(s.named))
-	for id := range s.named {
-		ids = append(ids, id)
+
+	keys := make([]VerificationKey, 0, len(s.named))
+
+	for _, key := range s.named {
+		keys = append(keys, key)
 	}
-	sort.Strings(ids)
-	out := make([]VerificationKey, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, s.named[id].clone())
-	}
-	return out
+
+	slices.SortFunc(
+		keys,
+		func(a, b VerificationKey) int {
+			return cmp.Compare(a.id, b.id)
+		},
+	)
+
+	return keys
 }
-func (s *StaticKeySet) Resolve(_ context.Context, h Header) (VerificationKey, error) {
+
+func (s *StaticKeySet) Resolve(ctx context.Context, header Header) (VerificationKey, error) {
 	if s == nil {
-		return VerificationKey{}, fmt.Errorf("%w: key set is nil", ErrInvalidConfig)
+		return VerificationKey{}, fmt.Errorf(
+			"%w: key set is nil",
+			ErrInvalidConfig,
+		)
 	}
+
 	if s.anonymous != nil {
-		return s.anonymous.Resolve(context.Background(), h)
+		return s.anonymous.Resolve(ctx, header)
 	}
-	if h.KeyID == "" {
+
+	if header.KeyID == "" {
 		return VerificationKey{}, ErrMissingKeyID
 	}
-	k, ok := s.named[h.KeyID]
-	if !ok {
+
+	key, exists := s.named[header.KeyID]
+	if !exists {
 		return VerificationKey{}, ErrUnknownKey
 	}
-	if h.Algorithm != k.method.Alg() {
-		return VerificationKey{}, ErrUnexpectedAlgorithm
-	}
-	return k.clone(), nil
+
+	return key.Resolve(ctx, header)
 }

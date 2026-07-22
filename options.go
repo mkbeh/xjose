@@ -26,7 +26,6 @@ type Option interface {
 type signerConfig struct {
 	typ        string
 	includeTyp bool
-	cty        string
 	maxSize    int
 }
 
@@ -48,7 +47,6 @@ type verifierConfig struct {
 	clock        func() time.Time
 
 	typ string
-	cty string
 
 	maxSize     int
 	maxLifetime time.Duration
@@ -58,8 +56,85 @@ type verifierConfig struct {
 	requireNBF  bool
 	validateIAT bool
 	requireIAT  bool
+}
 
-	requiredClaims []string
+func (config verifierConfig) parserOptions() []jwt.ParserOption {
+	methods := make(
+		[]string,
+		len(config.methods),
+	)
+
+	for index, method := range config.methods {
+		methods[index] = method.Alg()
+	}
+
+	options := []jwt.ParserOption{
+		jwt.WithValidMethods(methods),
+		jwt.WithStrictDecoding(),
+		jwt.WithTimeFunc(config.clock),
+	}
+
+	if config.requireExp {
+		options = append(
+			options,
+			jwt.WithExpirationRequired(),
+		)
+	}
+
+	if config.requireNBF {
+		options = append(
+			options,
+			jwt.WithNotBeforeRequired(),
+		)
+	}
+
+	if config.validateIAT {
+		options = append(
+			options,
+			jwt.WithIssuedAt(),
+		)
+	}
+
+	if config.issuer != "" {
+		options = append(
+			options,
+			jwt.WithIssuer(config.issuer),
+		)
+	}
+
+	if len(config.audiences) != 0 {
+		if config.audienceMode == audienceAll {
+			options = append(
+				options,
+				jwt.WithAllAudiences(
+					config.audiences...,
+				),
+			)
+		} else {
+			options = append(
+				options,
+				jwt.WithAudience(
+					config.audiences...,
+				),
+			)
+		}
+	}
+
+	if config.subject != "" {
+		options = append(
+			options,
+			jwt.WithSubject(config.subject),
+		)
+	}
+
+	if config.leeway != 0 {
+		options = append(
+			options,
+			jwt.WithLeeway(config.leeway),
+		)
+	}
+
+	return options
 }
 
 type typeOption string
@@ -70,22 +145,34 @@ func WithType(value string) Option {
 }
 
 func (option typeOption) applySigner(config *signerConfig) error {
-	if option == "" {
-		return fmt.Errorf("%w: typ is empty", ErrInvalidConfig)
+	value := string(option)
+
+	if err := validateHeaderValue(headerParamType, value, maxTypeLength); err != nil {
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidConfig,
+			err,
+		)
 	}
 
-	config.typ = string(option)
+	config.typ = value
 	config.includeTyp = true
 
 	return nil
 }
 
 func (option typeOption) applyVerifier(config *verifierConfig) error {
-	if option == "" {
-		return fmt.Errorf("%w: typ is empty", ErrInvalidConfig)
+	value := string(option)
+
+	if err := validateHeaderValue(headerParamType, value, maxTypeLength); err != nil {
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidConfig,
+			err,
+		)
 	}
 
-	config.typ = string(option)
+	config.typ = value
 
 	return nil
 }
@@ -100,33 +187,6 @@ func WithoutType() SignerOption {
 func (withoutTypeOption) applySigner(config *signerConfig) error {
 	config.typ = ""
 	config.includeTyp = false
-
-	return nil
-}
-
-type contentTypeOption string
-
-// WithContentType sets cty when signing and requires the same cty when verifying.
-func WithContentType(value string) Option {
-	return contentTypeOption(value)
-}
-
-func (option contentTypeOption) applySigner(config *signerConfig) error {
-	if option == "" {
-		return fmt.Errorf("%w: cty is empty", ErrInvalidConfig)
-	}
-
-	config.cty = string(option)
-
-	return nil
-}
-
-func (option contentTypeOption) applyVerifier(config *verifierConfig) error {
-	if option == "" {
-		return fmt.Errorf("%w: cty is empty", ErrInvalidConfig)
-	}
-
-	config.cty = string(option)
 
 	return nil
 }
@@ -361,7 +421,7 @@ func (requireIssuedAtOption) applyVerifier(config *verifierConfig) error {
 
 type maxLifetimeOption time.Duration
 
-// WithMaxLifetime limits exp-iat and therefore requires iat and exp.
+// WithMaxLifetime limits exp-iat when both claims are present.
 func WithMaxLifetime(lifetime time.Duration) VerifierOption {
 	return maxLifetimeOption(lifetime)
 }
@@ -372,16 +432,13 @@ func (option maxLifetimeOption) applyVerifier(config *verifierConfig) error {
 	}
 
 	config.maxLifetime = time.Duration(option)
-	config.requireExp = true
-	config.validateIAT = true
-	config.requireIAT = true
 
 	return nil
 }
 
 type maxTokenAgeOption time.Duration
 
-// WithMaxTokenAge limits now-iat and therefore requires iat.
+// WithMaxTokenAge limits now-iat when iat is present.
 func WithMaxTokenAge(age time.Duration) VerifierOption {
 	return maxTokenAgeOption(age)
 }
@@ -392,26 +449,6 @@ func (option maxTokenAgeOption) applyVerifier(config *verifierConfig) error {
 	}
 
 	config.maxAge = time.Duration(option)
-	config.validateIAT = true
-	config.requireIAT = true
-
-	return nil
-}
-
-type requiredClaimsOption []string
-
-// WithRequiredClaims requires the listed JWT claim members to be present.
-func WithRequiredClaims(names ...string) VerifierOption {
-	return requiredClaimsOption(append([]string(nil), names...))
-}
-
-func (option requiredClaimsOption) applyVerifier(config *verifierConfig) error {
-	names, err := validateUniqueStrings("required claim", option)
-	if err != nil {
-		return err
-	}
-
-	config.requiredClaims = names
 
 	return nil
 }

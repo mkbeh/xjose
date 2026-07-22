@@ -2,7 +2,6 @@ package xjwt
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -10,29 +9,18 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// VerifiedToken contains a fully verified JOSE header and typed claims.
-type VerifiedToken[C jwt.Claims] struct {
-	Header Header
-	Claims C
-}
-
 // Verifier verifies compact signed JWTs and validates typed claims.
-type Verifier[C jwt.Claims] struct {
-	factory  func() C
+type Verifier struct {
 	resolver KeyResolver
 	config   verifierConfig
 	parser   *jwt.Parser
 }
 
 // NewVerifier creates an immutable verifier.
-func NewVerifier[C jwt.Claims](
-	factory func() C,
+func NewVerifier(
 	resolver KeyResolver,
 	options ...VerifierOption,
-) (*Verifier[C], error) {
-	if factory == nil {
-		return nil, fmt.Errorf("%w: claims factory is nil", ErrInvalidConfig)
-	}
+) (*Verifier, error) {
 	if resolver == nil {
 		return nil, fmt.Errorf("%w: key resolver is nil", ErrInvalidConfig)
 	}
@@ -47,6 +35,7 @@ func NewVerifier[C jwt.Claims](
 		if option == nil {
 			return nil, fmt.Errorf("%w: nil verifier option", ErrInvalidConfig)
 		}
+
 		if err := option.applyVerifier(&config); err != nil {
 			return nil, err
 		}
@@ -56,147 +45,155 @@ func NewVerifier[C jwt.Claims](
 		return nil, fmt.Errorf("%w: WithMethods is required", ErrInvalidConfig)
 	}
 
-	methodNames := make([]string, 0, len(config.methods))
-	for _, method := range config.methods {
-		methodNames = append(methodNames, method.Alg())
-	}
-
-	parserOptions := []jwt.ParserOption{
-		jwt.WithValidMethods(methodNames),
-		jwt.WithStrictDecoding(),
-		jwt.WithTimeFunc(config.clock),
-	}
-
-	if config.requireExp {
-		parserOptions = append(parserOptions, jwt.WithExpirationRequired())
-	}
-	if config.requireNBF {
-		parserOptions = append(parserOptions, jwt.WithNotBeforeRequired())
-	}
-	if config.validateIAT {
-		parserOptions = append(parserOptions, jwt.WithIssuedAt())
-	}
-	if config.issuer != "" {
-		parserOptions = append(parserOptions, jwt.WithIssuer(config.issuer))
-	}
-	if len(config.audiences) != 0 {
-		if config.audienceMode == audienceAll {
-			parserOptions = append(parserOptions, jwt.WithAllAudiences(config.audiences...))
-		} else {
-			parserOptions = append(parserOptions, jwt.WithAudience(config.audiences...))
-		}
-	}
-	if config.subject != "" {
-		parserOptions = append(parserOptions, jwt.WithSubject(config.subject))
-	}
-	if config.leeway != 0 {
-		parserOptions = append(parserOptions, jwt.WithLeeway(config.leeway))
-	}
-
-	return &Verifier[C]{
-		factory:  factory,
+	return &Verifier{
 		resolver: resolver,
 		config:   config,
-		parser:   jwt.NewParser(parserOptions...),
+		parser: jwt.NewParser(
+			config.parserOptions()...,
+		),
 	}, nil
 }
 
-// Verify verifies raw and returns typed claims.
-func (verifier *Verifier[C]) Verify(ctx context.Context, raw string) (C, error) {
-	verified, err := verifier.VerifyToken(ctx, raw)
-
-	return verified.Claims, err
-}
-
-// VerifyToken verifies raw and returns both the trusted header and typed claims.
-func (verifier *Verifier[C]) VerifyToken(
+// Verify verifies raw and decodes its payload into claims.
+//
+// Claims must be non-nil and must not be used concurrently. It may be
+// partially modified when verification returns an error.
+func (verifier *Verifier) Verify(
 	ctx context.Context,
 	raw string,
-) (VerifiedToken[C], error) {
-	var zero VerifiedToken[C]
+	claims jwt.Claims,
+) error {
+	_, err := verifier.VerifyToken(ctx, raw, claims)
+	return err
+}
 
+// VerifyToken verifies raw and decodes its payload into claims.
+//
+// Claims must be a non-nil initialized value and must not be used
+// concurrently. It may be partially modified when verification returns
+// an error.
+func (verifier *Verifier) VerifyToken(
+	ctx context.Context,
+	raw string,
+	claims jwt.Claims,
+) (Header, error) {
 	if verifier == nil {
-		return zero, fmt.Errorf("%w: verifier is nil", ErrInvalidConfig)
+		return Header{}, fmt.Errorf("%w: verifier is nil", ErrInvalidConfig)
+	}
+	if claims == nil {
+		return Header{}, fmt.Errorf("%w: claims are nil", ErrInvalidClaims)
 	}
 	if ctx == nil {
-		return zero, fmt.Errorf("%w: context is nil", ErrInvalidConfig)
-	}
-	if err := ctx.Err(); err != nil {
-		return zero, err
+		return Header{}, fmt.Errorf("%w: context is nil", ErrInvalidConfig)
 	}
 
-	compact, err := parseCompactToken(raw, verifier.config.maxSize)
+	if err := validateRawToken(raw, verifier.config.maxSize); err != nil {
+		return Header{}, err
+	}
+
+	header, err := verifier.parse(ctx, raw, claims)
 	if err != nil {
-		return zero, err
+		return Header{}, err
 	}
 
-	claims := verifier.factory()
-	if any(claims) == nil {
-		return zero, fmt.Errorf("%w: claims factory returned nil", ErrInvalidConfig)
+	if err := verifier.validatePolicy(header, claims); err != nil {
+		return Header{}, err
 	}
 
-	header := compact.header
+	return header, nil
+}
+
+func (verifier *Verifier) parse(
+	ctx context.Context,
+	raw string,
+	claims jwt.Claims,
+) (Header, error) {
+	var header Header
 
 	token, err := verifier.parser.ParseWithClaims(
 		raw,
 		claims,
 		func(token *jwt.Token) (any, error) {
-			if token.Method == nil || token.Method.Alg() != header.Algorithm {
-				return nil, ErrUnexpectedAlgorithm
+			parsedHeader, err := parseTokenHeader(token)
+			if err != nil {
+				return nil, err
 			}
 
-			key, resolveErr := verifier.resolver.Resolve(ctx, header)
-			if resolveErr != nil {
-				return nil, resolveErr
-			}
-			if key.method == nil || key.method.Alg() != token.Method.Alg() {
-				return nil, ErrUnexpectedAlgorithm
-			}
+			header = parsedHeader
 
-			return key.key, nil
+			return verifier.resolveKey(ctx, parsedHeader, token)
 		},
 	)
 	if err != nil {
-		return zero, classifyVerifyError(err)
+		return Header{}, classifyVerifyError(err)
 	}
+
 	if token == nil || !token.Valid {
-		return zero, ErrInvalidSignature
+		return Header{}, ErrInvalidSignature
 	}
 
-	if verifier.config.typ != "" && header.Type != verifier.config.typ {
-		return zero, ErrUnexpectedType
-	}
-	if verifier.config.cty != "" && header.ContentType != verifier.config.cty {
-		return zero, ErrUnexpectedContentType
-	}
-	if err := validateRequiredClaims(compact.claimMembers, verifier.config.requiredClaims); err != nil {
-		return zero, err
-	}
-	if err := validateLifetime(claims, verifier.config); err != nil {
-		return zero, err
-	}
-
-	return VerifiedToken[C]{
-		Header: header,
-		Claims: claims,
-	}, nil
+	return header, nil
 }
 
-func validateRequiredClaims(
-	members map[string]json.RawMessage,
-	required []string,
-) error {
-	for _, name := range required {
-		if _, exists := members[name]; !exists {
-			return fmt.Errorf("%w: required claim %q is missing", ErrInvalidClaims, name)
-		}
+func (verifier *Verifier) resolveKey(
+	ctx context.Context,
+	header Header,
+	token *jwt.Token,
+) (any, error) {
+	if token.Method == nil || token.Method.Alg() != header.Algorithm {
+		return nil, ErrUnexpectedAlgorithm
+	}
+
+	key, err := verifier.resolver.Resolve(ctx, header)
+	if err != nil {
+		return nil, err
+	}
+
+	if key.method == nil || key.key == nil {
+		return nil, fmt.Errorf(
+			"%w: resolver returned an uninitialized verification key",
+			ErrInvalidKey,
+		)
+	}
+
+	if key.method.Alg() != token.Method.Alg() {
+		return nil, ErrUnexpectedAlgorithm
+	}
+
+	return key.key, nil
+}
+
+func validateRawToken(raw string, maxSize int) error {
+	if raw == "" {
+		return ErrMissingToken
+	}
+
+	if len(raw) > maxSize {
+		return fmt.Errorf(
+			"%w: got %d bytes, limit is %d",
+			ErrTokenTooLarge,
+			len(raw),
+			maxSize,
+		)
 	}
 
 	return nil
 }
 
+func (verifier *Verifier) validatePolicy(header Header, claims jwt.Claims) error {
+	if verifier.config.typ != "" && header.Type != verifier.config.typ {
+		return ErrUnexpectedType
+	}
+
+	return validateLifetime(claims, verifier.config)
+}
+
 func validateLifetime(claims jwt.Claims, config verifierConfig) error {
-	if !config.requireIAT && config.maxLifetime == 0 && config.maxAge == 0 {
+	needsIssuedAt := config.requireIAT ||
+		config.validateIAT ||
+		config.maxLifetime > 0 ||
+		config.maxAge > 0
+	if !needsIssuedAt {
 		return nil
 	}
 
@@ -205,32 +202,40 @@ func validateLifetime(claims jwt.Claims, config verifierConfig) error {
 		return fmt.Errorf("%w: read iat: %w", ErrInvalidLifetime, err)
 	}
 	if issuedAt == nil {
-		return fmt.Errorf("%w: iat is required", ErrInvalidLifetime)
+		if config.requireIAT {
+			return fmt.Errorf("%w: iat is required", ErrInvalidLifetime)
+		}
+
+		return nil
 	}
 
 	now := config.clock()
-	if issuedAt.Time.After(now.Add(config.leeway)) {
+	if (config.validateIAT || config.maxAge > 0) &&
+		issuedAt.After(now.Add(config.leeway)) {
 		return ErrIssuedInFuture
 	}
 
-	if config.maxAge > 0 && now.Sub(issuedAt.Time) > config.maxAge+config.leeway {
+	if config.maxAge > 0 &&
+		now.Sub(issuedAt.Time) > config.maxAge+config.leeway {
 		return ErrInvalidLifetime
 	}
 
-	if config.maxLifetime > 0 {
-		expiresAt, expirationErr := claims.GetExpirationTime()
-		if expirationErr != nil {
-			return fmt.Errorf("%w: read exp: %w", ErrInvalidLifetime, expirationErr)
-		}
-		if expiresAt == nil {
-			return fmt.Errorf("%w: exp is required", ErrInvalidLifetime)
-		}
-		if expiresAt.Time.Before(issuedAt.Time) {
-			return ErrInvalidLifetime
-		}
-		if expiresAt.Time.Sub(issuedAt.Time) > config.maxLifetime {
-			return ErrInvalidLifetime
-		}
+	if config.maxLifetime == 0 {
+		return nil
+	}
+
+	expiresAt, err := claims.GetExpirationTime()
+	if err != nil {
+		return fmt.Errorf("%w: read exp: %w", ErrInvalidLifetime, err)
+	}
+	if expiresAt == nil {
+		return nil
+	}
+	if !expiresAt.After(issuedAt.Time) {
+		return ErrInvalidLifetime
+	}
+	if expiresAt.Sub(issuedAt.Time) > config.maxLifetime {
+		return ErrInvalidLifetime
 	}
 
 	return nil
@@ -242,34 +247,76 @@ func classifyVerifyError(err error) error {
 		errors.Is(err, context.DeadlineExceeded):
 		return err
 
+	case errors.Is(err, jwt.ErrTokenMalformed):
+		return fmt.Errorf("%w: %w",
+			ErrMalformedToken,
+			err,
+		)
+
+	case errors.Is(err, ErrInvalidHeader):
+		return fmt.Errorf(
+			"%w: %w",
+			ErrMalformedToken,
+			err,
+		)
+
 	case errors.Is(err, jwt.ErrTokenExpired):
-		return fmt.Errorf("%w: %w", ErrExpiredToken, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrExpiredToken,
+			err,
+		)
 
 	case errors.Is(err, jwt.ErrTokenNotValidYet):
-		return fmt.Errorf("%w: %w", ErrNotYetValid, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrNotYetValid,
+			err,
+		)
 
 	case errors.Is(err, jwt.ErrTokenUsedBeforeIssued):
-		return fmt.Errorf("%w: %w", ErrIssuedInFuture, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrIssuedInFuture,
+			err,
+		)
 
 	case errors.Is(err, jwt.ErrTokenSignatureInvalid):
-		return fmt.Errorf("%w: %w", ErrInvalidSignature, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidSignature,
+			err,
+		)
 
 	case errors.Is(err, jwt.ErrTokenRequiredClaimMissing):
-		return fmt.Errorf("%w: %w", ErrInvalidClaims, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidClaims,
+			err,
+		)
 
 	case errors.Is(err, jwt.ErrTokenInvalidAudience),
 		errors.Is(err, jwt.ErrTokenInvalidIssuer),
 		errors.Is(err, jwt.ErrTokenInvalidSubject),
 		errors.Is(err, jwt.ErrTokenInvalidClaims):
-		return fmt.Errorf("%w: %w", ErrInvalidClaims, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidClaims,
+			err,
+		)
 
 	case errors.Is(err, ErrUnknownKey),
 		errors.Is(err, ErrMissingKeyID),
 		errors.Is(err, ErrUnexpectedAlgorithm),
-		errors.Is(err, ErrKeyUnavailable):
+		errors.Is(err, ErrKeyUnavailable),
+		errors.Is(err, ErrInvalidKey):
 		return err
 
 	default:
-		return fmt.Errorf("%w: %w", ErrVerify, err)
+		return fmt.Errorf(
+			"%w: %w",
+			ErrVerify,
+			err,
+		)
 	}
 }

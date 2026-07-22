@@ -13,4 +13,5 @@ var (
 	ErrUnexpectedContentType = errors.New("unexpected jwe content type")
 	ErrEncrypt               = errors.New("encrypt jwe")
 	ErrDecrypt               = errors.New("decrypt jwe")
+	ErrUnexpectedCompression = errors.New("unexpected jwe compression")
 )

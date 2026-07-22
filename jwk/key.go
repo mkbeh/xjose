@@ -6,51 +6,133 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/go-jose/go-jose/v4
+	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mkbeh/xjwt"
 )
 
+const keyUseSignature = "sig"
+
+// Key represents a JSON Web Key.
 type Key = jose.JSONWebKey
 
-func FromVerificationKey(key xjwt.VerificationKey) (jose.JSONWebKey, error) {
+// FromVerificationKey converts verification key to a public JWK.
+//
+// Symmetric verification keys cannot be represented as public JWKs.
+func FromVerificationKey(key xjwt.VerificationKey) (Key, error) {
+	method := key.Method()
+	if method == nil {
+		return Key{}, fmt.Errorf(
+			"%w: verification key is uninitialized",
+			xjwt.ErrInvalidKey,
+		)
+	}
+
 	raw := key.Key()
-	switch raw.(type) {
-	case []byte:
-		return jose.JSONWebKey{}, fmt.Errorf("%w: symmetric keys are not exported as public JWK", xjwt.ErrInvalidKey)
+	if raw == nil {
+		return Key{}, fmt.Errorf(
+			"%w: verification key is uninitialized",
+			xjwt.ErrInvalidKey,
+		)
 	}
-	jwk := jose.JSONWebKey{Key: raw, KeyID: key.ID(), Algorithm: key.Method().Alg(), Use: "sig"}
-	if !jwk.Valid() || !jwk.IsPublic() {
-		return jose.JSONWebKey{}, fmt.Errorf("%w: invalid public JWK", xjwt.ErrInvalidKey)
+
+	if _, symmetric := raw.([]byte); symmetric {
+		return Key{}, fmt.Errorf(
+			"%w: symmetric keys cannot be exported as public JWKs",
+			xjwt.ErrInvalidKey,
+		)
 	}
-	return jwk, nil
+
+	result := Key{
+		Key:       raw,
+		KeyID:     key.ID(),
+		Algorithm: method.Alg(),
+		Use:       keyUseSignature,
+	}
+
+	if err := validatePublicKey(result); err != nil {
+		return Key{}, err
+	}
+
+	return result, nil
 }
-func Parse(data []byte) (jose.JSONWebKey, error) {
-	var key jose.JSONWebKey
+
+// Parse parses and validates a public JWK.
+func Parse(data []byte) (Key, error) {
+	var key Key
+
 	if err := json.Unmarshal(data, &key); err != nil {
-		return jose.JSONWebKey{}, fmt.Errorf("parse JWK: %w", err)
+		return Key{}, fmt.Errorf(
+			"%w: parse JWK: %w",
+			xjwt.ErrInvalidKey,
+			err,
+		)
 	}
-	if !key.Valid() || !key.IsPublic() {
-		return jose.JSONWebKey{}, fmt.Errorf("%w: JWK must contain a valid public key", xjwt.ErrInvalidKey)
+
+	if err := validatePublicKey(key); err != nil {
+		return Key{}, err
 	}
+
 	return key, nil
 }
-func VerificationKey(key jose.JSONWebKey, method jwt.SigningMethod) (xjwt.VerificationKey, error) {
+
+// ToVerificationKey converts a public JWK to verification key.
+func ToVerificationKey(key Key, method jwt.SigningMethod) (xjwt.VerificationKey, error) {
 	if method == nil {
-		return xjwt.VerificationKey{}, fmt.Errorf("%w: signing method is nil", xjwt.ErrInvalidConfig)
+		return xjwt.VerificationKey{}, fmt.Errorf(
+			"%w: signing method is nil",
+			xjwt.ErrInvalidConfig,
+		)
 	}
+
+	if err := validatePublicKey(key); err != nil {
+		return xjwt.VerificationKey{}, err
+	}
+
+	if key.Use != "" && key.Use != keyUseSignature {
+		return xjwt.VerificationKey{}, fmt.Errorf(
+			"%w: JWK use %q does not permit signature verification",
+			xjwt.ErrInvalidKey,
+			key.Use,
+		)
+	}
+
 	if key.Algorithm != "" && key.Algorithm != method.Alg() {
 		return xjwt.VerificationKey{}, xjwt.ErrUnexpectedAlgorithm
 	}
-	if !key.Valid() || !key.IsPublic() {
-		return xjwt.VerificationKey{}, fmt.Errorf("%w: invalid public JWK", xjwt.ErrInvalidKey)
-	}
-	return xjwt.NewVerificationKey(key.KeyID, method, key.Key)
+
+	return xjwt.NewVerificationKey(
+		key.KeyID,
+		method,
+		key.Key,
+	)
 }
-func ThumbprintID(key jose.JSONWebKey) (string, error) {
-	sum, err := key.Thumbprint(crypto.SHA256)
-	if err != nil {
+
+// ThumbprintID returns the base64url-encoded SHA-256 RFC 7638 thumbprint.
+func ThumbprintID(key Key) (string, error) {
+	if err := validatePublicKey(key); err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(sum), nil
+
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", fmt.Errorf(
+			"%w: calculate JWK thumbprint: %w",
+			xjwt.ErrInvalidKey,
+			err,
+		)
+	}
+
+	return base64.RawURLEncoding.EncodeToString(thumbprint), nil
+}
+
+func validatePublicKey(key Key) error {
+	if !key.Valid() || !key.IsPublic() {
+		return fmt.Errorf(
+			"%w: JWK must contain a valid public key",
+			xjwt.ErrInvalidKey,
+		)
+	}
+
+	return nil
 }

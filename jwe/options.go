@@ -2,86 +2,201 @@ package jwe
 
 import (
 	"fmt"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 )
 
 const (
-	DefaultMaxTokenSize     = 32 << 10
+	// DefaultMaxTokenSize is the default maximum compact JWE size accepted or
+	// produced by this package.
+	DefaultMaxTokenSize = 32 << 10
+
+	// DefaultMaxPlaintextSize is the default maximum plaintext size accepted
+	// before encryption or returned after decryption.
 	DefaultMaxPlaintextSize = 16 << 10
+
+	maxAlgorithmLength   = 64
+	maxTypeLength        = 128
+	maxContentTypeLength = 128
 )
 
-type Option interface{ apply(*config) error }
+type Option interface {
+	apply(*config) error
+}
+
 type config struct {
-	typ, cty           string
-	maxToken, maxPlain int
-	headers            map[jose.HeaderKey]any
-}
-type typOption string
+	typ         string
+	cty         string
+	compression jose.CompressionAlgorithm
 
-func WithType(v string) Option { return typOption(v) }
-func (o typOption) apply(c *config) error {
-	if o == "" {
-		return fmt.Errorf("%w: typ is empty", ErrInvalidConfig)
+	maxTokenSize     int
+	maxPlaintextSize int
+}
+
+type typeOption string
+
+// WithType sets the typ protected header for encryption and requires the same
+// value during decryption.
+func WithType(value string) Option {
+	return typeOption(value)
+}
+
+func (option typeOption) apply(config *config) error {
+	value := string(option)
+
+	if err := validateHeaderValue(headerType, value, maxTypeLength); err != nil {
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidConfig,
+			err,
+		)
 	}
-	c.typ = string(o)
+
+	config.typ = value
+
 	return nil
 }
 
-type ctyOption string
+type contentTypeOption string
 
-func WithContentType(v string) Option { return ctyOption(v) }
-func (o ctyOption) apply(c *config) error {
-	if o == "" {
-		return fmt.Errorf("%w: cty is empty", ErrInvalidConfig)
+// WithContentType sets the cty protected header for encryption and requires
+// the same value during decryption.
+func WithContentType(value string) Option {
+	return contentTypeOption(value)
+}
+
+func (option contentTypeOption) apply(config *config) error {
+	value := string(option)
+
+	if err := validateHeaderValue(headerContentType, value, maxContentTypeLength); err != nil {
+		return fmt.Errorf(
+			"%w: %w",
+			ErrInvalidConfig,
+			err,
+		)
 	}
-	c.cty = string(o)
+
+	config.cty = value
+
 	return nil
 }
 
-type sizeOption struct{ token, plain int }
+type compressionOption jose.CompressionAlgorithm
 
-func WithMaxTokenSize(v int) Option     { return sizeOption{token: v} }
-func WithMaxPlaintextSize(v int) Option { return sizeOption{plain: v} }
-func (o sizeOption) apply(c *config) error {
-	if o.token < 0 || o.plain < 0 {
-		return fmt.Errorf("%w: sizes must not be negative", ErrInvalidConfig)
-	}
-	if o.token > 0 {
-		c.maxToken = o.token
-	}
-	if o.plain > 0 {
-		c.maxPlain = o.plain
-	}
+// WithCompression configures plaintext compression.
+//
+// Compression is disabled by default. Use jose.NONE to disable it explicitly.
+func WithCompression(algorithm jose.CompressionAlgorithm) Option {
+	return compressionOption(algorithm)
+}
+
+func (option compressionOption) apply(config *config) error {
+	config.compression = jose.CompressionAlgorithm(option)
+
 	return nil
 }
 
-type headerOption struct {
-	k jose.HeaderKey
-	v any
+type maxTokenSizeOption int
+
+// WithMaxTokenSize sets the maximum compact JWE size accepted or produced.
+func WithMaxTokenSize(size int) Option {
+	return maxTokenSizeOption(size)
 }
 
-func WithProtectedHeader(k jose.HeaderKey, v any) Option { return headerOption{k, v} }
-func (o headerOption) apply(c *config) error {
-	switch string(o.k) {
-	case "alg", "enc", "kid", "typ", "cty", "crit", "zip":
-		return fmt.Errorf("%w: protected header %q is reserved", ErrInvalidConfig, o.k)
+func (option maxTokenSizeOption) apply(config *config) error {
+	size := int(option)
+
+	if size <= 0 {
+		return fmt.Errorf(
+			"%w: maximum token size must be positive",
+			ErrInvalidConfig,
+		)
 	}
-	if c.headers == nil {
-		c.headers = map[jose.HeaderKey]any{}
-	}
-	c.headers[o.k] = o.v
+
+	config.maxTokenSize = size
+
 	return nil
 }
-func makeConfig(opts []Option) (config, error) {
-	c := config{maxToken: DefaultMaxTokenSize, maxPlain: DefaultMaxPlaintextSize}
-	for _, o := range opts {
-		if o == nil {
-			return c, fmt.Errorf("%w: nil option", ErrInvalidConfig)
+
+type maxPlaintextSizeOption int
+
+// WithMaxPlaintextSize sets the maximum plaintext size accepted before
+// encryption or returned after decryption.
+func WithMaxPlaintextSize(size int) Option {
+	return maxPlaintextSizeOption(size)
+}
+
+func (option maxPlaintextSizeOption) apply(config *config) error {
+	size := int(option)
+
+	if size <= 0 {
+		return fmt.Errorf(
+			"%w: maximum plaintext size must be positive",
+			ErrInvalidConfig,
+		)
+	}
+
+	config.maxPlaintextSize = size
+
+	return nil
+}
+
+func makeConfig(options []Option) (config, error) {
+	config := config{
+		compression:      jose.NONE,
+		maxTokenSize:     DefaultMaxTokenSize,
+		maxPlaintextSize: DefaultMaxPlaintextSize,
+	}
+
+	for _, option := range options {
+		if option == nil {
+			return config, fmt.Errorf(
+				"%w: option is nil",
+				ErrInvalidConfig,
+			)
 		}
-		if err := o.apply(&c); err != nil {
-			return c, err
+
+		if err := option.apply(&config); err != nil {
+			return config, err
 		}
 	}
-	return c, nil
+
+	return config, nil
+}
+
+func validateHeaderValue(name jose.HeaderKey, value string, maxLength int) error {
+	if value == "" {
+		return fmt.Errorf(
+			"%s must not be empty",
+			name,
+		)
+	}
+
+	if len(value) > maxLength {
+		return fmt.Errorf(
+			"%s exceeds %d bytes",
+			name,
+			maxLength,
+		)
+	}
+
+	if !utf8.ValidString(value) {
+		return fmt.Errorf(
+			"%s is not valid UTF-8",
+			name,
+		)
+	}
+
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return fmt.Errorf(
+				"%s contains control characters",
+				name,
+			)
+		}
+	}
+
+	return nil
 }

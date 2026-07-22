@@ -1,7 +1,7 @@
 package jwe
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 
 	"github.com/go-jose/go-jose/v4"
@@ -13,67 +13,138 @@ type Encrypter struct {
 	config     config
 }
 
-func NewEncrypter(recipient jose.Recipient, encryption jose.ContentEncryption, options ...Option) (*Encrypter, error) {
-	if recipient.Algorithm == "" || recipient.Key == nil || encryption == "" {
-		return nil, fmt.Errorf("%w: recipient and encryption are required", ErrInvalidConfig)
+func NewEncrypter(
+	recipient jose.Recipient,
+	encryption jose.ContentEncryption,
+	options ...Option,
+) (*Encrypter, error) {
+	if recipient.Algorithm == "" {
+		return nil, fmt.Errorf(
+			"%w: key management algorithm is required",
+			ErrInvalidConfig,
+		)
 	}
-	c, err := makeConfig(options)
+
+	if recipient.Key == nil {
+		return nil, fmt.Errorf(
+			"%w: recipient key is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	if encryption == "" {
+		return nil, fmt.Errorf(
+			"%w: content encryption algorithm is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	recipient.Key = cloneKeyMaterial(recipient.Key)
+	recipient.PBES2Salt = bytes.Clone(recipient.PBES2Salt)
+
+	config, err := makeConfig(options)
 	if err != nil {
 		return nil, err
 	}
-	e := &Encrypter{recipient: recipient, encryption: encryption, config: c}
-	if _, err = e.backend(""); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+
+	// Validate the complete JOSE configuration at construction time. A fresh
+	// backend is created for each Encrypt call because some go-jose encrypters
+	// contain mutable per-message state.
+	if _, err := newEncrypter(recipient, encryption, config); err != nil {
+		return nil, fmt.Errorf(
+			"%w: create encrypter: %w",
+			ErrInvalidConfig,
+			err,
+		)
 	}
-	return e, nil
+
+	return &Encrypter{
+		recipient:  recipient,
+		encryption: encryption,
+		config:     config,
+	}, nil
 }
-func (e *Encrypter) backend(contentType string) (jose.Encrypter, error) {
-	opts := &jose.EncrypterOptions{ExtraHeaders: map[jose.HeaderKey]any{}}
-	for k, v := range e.config.headers {
-		opts.ExtraHeaders[k] = v
+
+func newEncrypter(
+	recipient jose.Recipient,
+	encryption jose.ContentEncryption,
+	config config,
+) (jose.Encrypter, error) {
+	options := &jose.EncrypterOptions{
+		Compression: config.compression,
 	}
-	if e.config.typ != "" {
-		opts.WithType(jose.ContentType(e.config.typ))
+
+	if config.typ != "" {
+		options.WithType(
+			jose.ContentType(config.typ),
+		)
 	}
-	cty := e.config.cty
-	if contentType != "" {
-		cty = contentType
+
+	if config.cty != "" {
+		options.WithContentType(
+			jose.ContentType(config.cty),
+		)
 	}
-	if cty != "" {
-		opts.WithContentType(jose.ContentType(cty))
-	}
-	return jose.NewEncrypter(e.encryption, e.recipient, opts)
+
+	return jose.NewEncrypter(encryption, recipient, options)
 }
-func (e *Encrypter) Encrypt(ctx context.Context, plaintext []byte) (string, error) {
-	return e.encrypt(ctx, plaintext, "")
-}
-func (e *Encrypter) encrypt(ctx context.Context, plaintext []byte, cty string) (string, error) {
+
+func (e *Encrypter) Encrypt(plaintext []byte) (string, error) {
 	if e == nil {
-		return "", fmt.Errorf("%w: encrypter is nil", ErrInvalidConfig)
+		return "", fmt.Errorf(
+			"%w: encrypter is uninitialized",
+			ErrInvalidConfig,
+		)
 	}
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
+
 	if len(plaintext) == 0 {
 		return "", ErrMissingPlaintext
 	}
-	if len(plaintext) > e.config.maxPlain {
-		return "", ErrPlaintextTooLarge
+
+	if len(plaintext) > e.config.maxPlaintextSize {
+		return "", fmt.Errorf(
+			"%w: got %d bytes, limit is %d",
+			ErrPlaintextTooLarge,
+			len(plaintext),
+			e.config.maxPlaintextSize,
+		)
 	}
-	backend, err := e.backend(cty)
+
+	backend, err := newEncrypter(e.recipient, e.encryption, e.config)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrEncrypt, err)
+		return "", fmt.Errorf(
+			"%w: create encrypter: %w",
+			ErrEncrypt,
+			err,
+		)
 	}
-	obj, err := backend.Encrypt(plaintext)
+
+	object, err := backend.Encrypt(plaintext)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrEncrypt, err)
+		return "", fmt.Errorf(
+			"%w: encrypt plaintext: %w",
+			ErrEncrypt,
+			err,
+		)
 	}
-	raw, err := obj.CompactSerialize()
+
+	raw, err := object.CompactSerialize()
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrEncrypt, err)
+		return "", fmt.Errorf(
+			"%w: serialize compact JWE: %w",
+			ErrEncrypt,
+			err,
+		)
 	}
-	if len(raw) > e.config.maxToken {
-		return "", ErrTokenTooLarge
+
+	if len(raw) > e.config.maxTokenSize {
+		return "", fmt.Errorf(
+			"%w: got %d bytes, limit is %d",
+			ErrTokenTooLarge,
+			len(raw),
+			e.config.maxTokenSize,
+		)
 	}
+
 	return raw, nil
 }

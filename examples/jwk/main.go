@@ -13,8 +13,8 @@ import (
 )
 
 func main() {
-	// Generate an RSA key pair. In production, load the public key from a
-	// trusted key-management system or configuration source.
+	// Generate a key pair for the example. Production verifiers normally load
+	// a trusted public key or JWK from configuration or a key-management system.
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		log.Fatalf("generate RSA key: %v", err)
@@ -29,31 +29,30 @@ func main() {
 		log.Fatalf("create verification key: %v", err)
 	}
 
-	// Export the xjwt verification key as a public JWK.
+	// Export the verification key as a public JWK.
 	publicJWK, err := jwk.FromVerificationKey(verificationKey)
 	if err != nil {
 		log.Fatalf("export JWK: %v", err)
 	}
 
-	document, err := json.MarshalIndent(publicJWK, "", "  ")
+	jwkJSON, err := json.MarshalIndent(publicJWK, "", "  ")
 	if err != nil {
 		log.Fatalf("marshal JWK: %v", err)
 	}
 
-	// RFC 7638 thumbprints provide a stable identifier derived from the public
-	// key material. They can be used as deterministic key IDs when desired.
+	// Calculate the RFC 7638 SHA-256 thumbprint.
 	thumbprint, err := jwk.ThumbprintID(publicJWK)
 	if err != nil {
 		log.Fatalf("calculate JWK thumbprint: %v", err)
 	}
 
 	// Parse the serialized JWK and convert it back to an xjwt verification key.
-	parsedJWK, err := jwk.Parse(document)
+	parsedJWK, err := jwk.Parse(jwkJSON)
 	if err != nil {
 		log.Fatalf("parse JWK: %v", err)
 	}
 
-	parsedVerificationKey, err := jwk.VerificationKey(
+	parsedVerificationKey, err := jwk.ToVerificationKey(
 		parsedJWK,
 		jwt.SigningMethodRS256,
 	)
@@ -61,8 +60,11 @@ func main() {
 		log.Fatalf("create verification key from JWK: %v", err)
 	}
 
-	fmt.Printf("JWK:\n%s\n", document)
+	fmt.Printf("JWK:\n%s\n", jwkJSON)
 	fmt.Printf("thumbprint: %s\n", thumbprint)
 	fmt.Printf("key ID: %s\n", parsedVerificationKey.ID())
-	fmt.Printf("algorithm: %s\n", parsedVerificationKey.Method().Alg())
+	fmt.Printf(
+		"algorithm: %s\n",
+		parsedVerificationKey.Method().Alg(),
+	)
 }

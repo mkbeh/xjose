@@ -1,86 +1,180 @@
 package xjwt
 
 import (
-	"encoding/json"
 	"fmt"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
-	maxKeyIDLength       = 256
-	maxTypeLength        = 128
-	maxContentTypeLength = 128
+	headerParamAlgorithm = "alg"
+	headerParamKeyID     = "kid"
+	headerParamType      = "typ"
+	headerParamCritical  = "crit"
+	headerParamBase64    = "b64"
+
+	algorithmNone = "none"
+
+	maxAlgorithmLength = 64
+	maxKeyIDLength     = 256
+	maxTypeLength      = 128
 )
 
+// Header contains the protected JOSE header values.
 type Header struct {
-	Algorithm   string
-	KeyID       string
-	Type        string
-	ContentType string
+	Algorithm string
+	KeyID     string
+	Type      string
 }
 
-func parseHeader(data []byte) (Header, error) {
-	members, err := parseJSONObject(data)
+func parseTokenHeader(token *jwt.Token) (Header, error) {
+	if token == nil || token.Method == nil {
+		return Header{}, invalidHeader(
+			"signing method is missing",
+		)
+	}
+
+	if _, exists := token.Header[headerParamCritical]; exists {
+		return Header{}, invalidHeader(
+			"critical headers are not supported",
+		)
+	}
+
+	if _, exists := token.Header[headerParamBase64]; exists {
+		return Header{}, invalidHeader(
+			"unencoded payloads are not supported",
+		)
+	}
+
+	algorithm, err := headerString(
+		token.Header,
+		headerParamAlgorithm,
+		maxAlgorithmLength,
+		true,
+	)
 	if err != nil {
-		return Header{}, fmt.Errorf("%w: %w", ErrInvalidHeader, err)
+		return Header{}, err
 	}
-	if _, ok := members["crit"]; ok {
-		return Header{}, fmt.Errorf("%w: critical headers are not supported", ErrInvalidHeader)
+
+	if algorithm == algorithmNone || algorithm != token.Method.Alg() {
+		return Header{}, ErrUnexpectedAlgorithm
 	}
-	if _, ok := members["b64"]; ok {
-		return Header{}, fmt.Errorf("%w: b64 header is not supported", ErrInvalidHeader)
-	}
-	alg, err := requiredStringMember(members, "alg", 64)
-	if err != nil || alg == "none" {
-		return Header{}, ErrInvalidHeader
-	}
-	kid, err := optionalStringMember(members, "kid", maxKeyIDLength)
+
+	keyID, err := headerString(
+		token.Header,
+		headerParamKeyID,
+		maxKeyIDLength,
+		false,
+	)
 	if err != nil {
-		return Header{}, ErrInvalidHeader
+		return Header{}, err
 	}
-	typ, err := optionalStringMember(members, "typ", maxTypeLength)
+
+	if err := validateKeyID(keyID); err != nil {
+		return Header{}, fmt.Errorf(
+			"%w: %w",
+			ErrInvalidHeader,
+			err,
+		)
+	}
+
+	typ, err := headerString(
+		token.Header,
+		headerParamType,
+		maxTypeLength,
+		false,
+	)
 	if err != nil {
-		return Header{}, ErrInvalidHeader
+		return Header{}, err
 	}
-	cty, err := optionalStringMember(members, "cty", maxContentTypeLength)
-	if err != nil {
-		return Header{}, ErrInvalidHeader
-	}
-	return Header{Algorithm: alg, KeyID: kid, Type: typ, ContentType: cty}, nil
+
+	return Header{
+		Algorithm: algorithm,
+		KeyID:     keyID,
+		Type:      typ,
+	}, nil
 }
-func requiredStringMember(m map[string]json.RawMessage, n string, max int) (string, error) {
-	r, ok := m[n]
-	if !ok {
-		return "", fmt.Errorf("%s is required", n)
-	}
-	return decodeHeaderString(r, n, max)
-}
-func optionalStringMember(m map[string]json.RawMessage, n string, max int) (string, error) {
-	r, ok := m[n]
-	if !ok {
+
+func headerString(
+	header map[string]any,
+	name string,
+	maxLength int,
+	required bool,
+) (string, error) {
+	value, exists := header[name]
+	if !exists {
+		if required {
+			return "", fmt.Errorf(
+				"%w: %s is required",
+				ErrInvalidHeader,
+				name,
+			)
+		}
+
 		return "", nil
 	}
-	return decodeHeaderString(r, n, max)
+
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf(
+			"%w: %s must be a string",
+			ErrInvalidHeader,
+			name,
+		)
+	}
+
+	if err := validateHeaderValue(name, text, maxLength); err != nil {
+		return "", fmt.Errorf(
+			"%w: %w",
+			ErrInvalidHeader,
+			err,
+		)
+	}
+
+	return text, nil
 }
-func decodeHeaderString(raw json.RawMessage, n string, max int) (string, error) {
-	var v string
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return "", fmt.Errorf("%s must be a string", n)
+
+func validateHeaderValue(name, value string, maxLength int) error {
+	if value == "" {
+		return fmt.Errorf(
+			"%s must not be empty",
+			name,
+		)
 	}
-	if err := validateHeaderValue(n, v, max); err != nil {
-		return "", err
+
+	if len(value) > maxLength {
+		return fmt.Errorf(
+			"%s exceeds %d bytes",
+			name,
+			maxLength,
+		)
 	}
-	return v, nil
-}
-func validateHeaderValue(n, v string, max int) error {
-	if v == "" || len(v) > max || !utf8.ValidString(v) {
-		return fmt.Errorf("%s must contain 1 to %d UTF-8 bytes", n, max)
+
+	if !utf8.ValidString(value) {
+		return fmt.Errorf(
+			"%s is not valid UTF-8",
+			name,
+		)
 	}
-	for _, r := range v {
-		if unicode.IsControl(r) {
-			return fmt.Errorf("%s contains control characters", n)
+
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return fmt.Errorf(
+				"%s contains control characters",
+				name,
+			)
 		}
 	}
+
 	return nil
+}
+
+func invalidHeader(message string) error {
+	return fmt.Errorf(
+		"%w: %s",
+		ErrInvalidHeader,
+		message,
+	)
 }

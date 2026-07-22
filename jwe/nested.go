@@ -8,56 +8,182 @@ import (
 	"github.com/mkbeh/xjwt"
 )
 
-type Issuer struct {
+const nestedJWTContentType = "JWT"
+
+// NestedIssuer signs a JWT and encrypts the resulting compact token as JWE.
+type NestedIssuer struct {
 	signer    *xjwt.Signer
 	encrypter *Encrypter
 }
 
-func NewIssuer(signer *xjwt.Signer, encrypter *Encrypter) (*Issuer, error) {
-	if signer == nil || encrypter == nil {
-		return nil, fmt.Errorf("%w: signer and encrypter are required", ErrInvalidConfig)
+// NewNestedIssuer creates a sign-then-encrypt JWT issuer.
+//
+// The encrypter must be configured with cty=JWT.
+func NewNestedIssuer(
+	signer *xjwt.Signer,
+	encrypter *Encrypter,
+) (*NestedIssuer, error) {
+	if signer == nil {
+		return nil, fmt.Errorf(
+			"%w: signer is required",
+			ErrInvalidConfig,
+		)
 	}
-	return &Issuer{signer, encrypter}, nil
-}
-func (i *Issuer) Issue(ctx context.Context, claims jwt.Claims) (string, error) {
-	signed, err := i.signer.Sign(ctx, claims)
-	if err != nil {
-		return "", err
+
+	if encrypter == nil {
+		return nil, fmt.Errorf(
+			"%w: encrypter is required",
+			ErrInvalidConfig,
+		)
 	}
-	return i.encrypter.encrypt(ctx, []byte(signed), "JWT")
+
+	if encrypter.config.cty != nestedJWTContentType {
+		return nil, fmt.Errorf(
+			"%w: encrypter content type must be %q",
+			ErrInvalidConfig,
+			nestedJWTContentType,
+		)
+	}
+
+	return &NestedIssuer{
+		signer:    signer,
+		encrypter: encrypter,
+	}, nil
 }
 
-type VerifiedToken[C jwt.Claims] struct {
+// Issue signs claims as a compact JWT and encrypts it as a nested compact JWE.
+func (issuer *NestedIssuer) Issue(ctx context.Context, claims jwt.Claims) (string, error) {
+	if issuer == nil ||
+		issuer.signer == nil ||
+		issuer.encrypter == nil {
+		return "", fmt.Errorf(
+			"%w: nested issuer is uninitialized",
+			ErrInvalidConfig,
+		)
+	}
+
+	signedJWT, err := issuer.signer.Sign(ctx, claims)
+	if err != nil {
+		return "", fmt.Errorf(
+			"sign nested JWT: %w",
+			err,
+		)
+	}
+
+	encryptedJWT, err := issuer.encrypter.Encrypt([]byte(signedJWT))
+	if err != nil {
+		return "", fmt.Errorf(
+			"encrypt nested JWT: %w",
+			err,
+		)
+	}
+
+	return encryptedJWT, nil
+}
+
+// VerifiedToken contains authenticated outer JWE and inner JWT headers.
+//
+// Claims are decoded into the value passed to NestedVerifier.VerifyToken.
+type VerifiedToken struct {
 	JWEHeader Header
-	JWT       xjwt.VerifiedToken[C]
-}
-type Verifier[C jwt.Claims] struct {
-	decrypter *Decrypter
-	verifier  *xjwt.Verifier[C]
+	JWTHeader xjwt.Header
 }
 
-func NewVerifier[C jwt.Claims](decrypter *Decrypter, verifier *xjwt.Verifier[C]) (*Verifier[C], error) {
-	if decrypter == nil || verifier == nil {
-		return nil, fmt.Errorf("%w: decrypter and verifier are required", ErrInvalidConfig)
-	}
-	return &Verifier[C]{decrypter, verifier}, nil
+// NestedVerifier decrypts an outer JWE and verifies the nested signed JWT.
+type NestedVerifier struct {
+	decrypter *Decrypter
+	verifier  *xjwt.Verifier
 }
-func (v *Verifier[C]) Verify(ctx context.Context, raw string) (C, error) {
-	t, err := v.VerifyToken(ctx, raw)
-	return t.JWT.Claims, err
+
+// NewNestedVerifier creates a decrypt-then-verify nested JWT verifier.
+func NewNestedVerifier(
+	decrypter *Decrypter,
+	verifier *xjwt.Verifier,
+) (*NestedVerifier, error) {
+	if decrypter == nil {
+		return nil, fmt.Errorf(
+			"%w: decrypter is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	if verifier == nil {
+		return nil, fmt.Errorf(
+			"%w: JWT verifier is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	if decrypter.config.cty != "" &&
+		decrypter.config.cty != nestedJWTContentType {
+		return nil, fmt.Errorf(
+			"%w: decrypter content type must be %q",
+			ErrInvalidConfig,
+			nestedJWTContentType,
+		)
+	}
+
+	return &NestedVerifier{
+		decrypter: decrypter,
+		verifier:  verifier,
+	}, nil
 }
-func (v *Verifier[C]) VerifyToken(ctx context.Context, raw string) (VerifiedToken[C], error) {
-	var zero VerifiedToken[C]
-	d, err := v.decrypter.DecryptToken(ctx, raw)
+
+// Verify decrypts and verifies a nested JWT.
+func (verifier *NestedVerifier) Verify(
+	ctx context.Context,
+	raw string,
+	claims jwt.Claims,
+) error {
+	_, err := verifier.VerifyToken(ctx, raw, claims)
+	return err
+}
+
+// VerifyToken decrypts an outer compact JWE, requires cty=JWT, and verifies
+// the nested compact JWT.
+func (verifier *NestedVerifier) VerifyToken(
+	ctx context.Context,
+	raw string,
+	claims jwt.Claims,
+) (VerifiedToken, error) {
+	if verifier == nil ||
+		verifier.decrypter == nil ||
+		verifier.verifier == nil {
+		return VerifiedToken{}, fmt.Errorf(
+			"%w: nested verifier is uninitialized",
+			ErrInvalidConfig,
+		)
+	}
+
+	decrypted, err := verifier.decrypter.DecryptToken(ctx, raw)
 	if err != nil {
-		return zero, err
+		return VerifiedToken{}, fmt.Errorf(
+			"decrypt nested JWT: %w",
+			err,
+		)
 	}
-	if d.Header.ContentType != "JWT" {
-		return zero, ErrUnexpectedContentType
+
+	// DecryptToken returns only after successful JWE authentication, so this
+	// content-type value is now trusted.
+	if decrypted.Header.ContentType != nestedJWTContentType {
+		return VerifiedToken{}, fmt.Errorf(
+			"%w: expected %q, got %q",
+			ErrUnexpectedContentType,
+			nestedJWTContentType,
+			decrypted.Header.ContentType,
+		)
 	}
-	inner, err := v.verifier.VerifyToken(ctx, string(d.Plaintext))
+
+	jwtHeader, err := verifier.verifier.VerifyToken(ctx, string(decrypted.Plaintext), claims)
 	if err != nil {
-		return zero, err
+		return VerifiedToken{}, fmt.Errorf(
+			"verify nested JWT: %w",
+			err,
+		)
 	}
-	return VerifiedToken[C]{JWEHeader: d.Header, JWT: inner}, nil
+
+	return VerifiedToken{
+		JWEHeader: decrypted.Header,
+		JWTHeader: jwtHeader,
+	}, nil
 }

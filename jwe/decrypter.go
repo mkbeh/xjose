@@ -3,100 +3,219 @@ package jwe
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/go-jose/go-jose/v4"
 )
 
-type Header struct {
-	Algorithm   string
-	KeyID       string
-	Type        string
-	ContentType string
-}
+// Decrypted contains authenticated JWE header parameters and plaintext.
 type Decrypted struct {
 	Header    Header
 	Plaintext []byte
 }
-type KeyResolver interface {
-	Resolve(context.Context, Header) (any, error)
-}
-type KeyResolverFunc func(context.Context, Header) (any, error)
-
-func (f KeyResolverFunc) Resolve(ctx context.Context, h Header) (any, error) { return f(ctx, h) }
-
-type staticResolver struct{ key any }
-
-func (s staticResolver) Resolve(context.Context, Header) (any, error) { return s.key, nil }
 
 type Decrypter struct {
-	resolver    KeyResolver
-	algorithms  []jose.KeyAlgorithm
-	encryptions []jose.ContentEncryption
-	config      config
+	resolver           KeyResolver
+	keyAlgorithms      []jose.KeyAlgorithm
+	contentEncryptions []jose.ContentEncryption
+	config             config
 }
 
-func NewDecrypter(key any, algorithms []jose.KeyAlgorithm, encryptions []jose.ContentEncryption, options ...Option) (*Decrypter, error) {
-	return NewDecrypterWithResolver(staticResolver{key}, algorithms, encryptions, options...)
-}
-func NewDecrypterWithResolver(resolver KeyResolver, algorithms []jose.KeyAlgorithm, encryptions []jose.ContentEncryption, options ...Option) (*Decrypter, error) {
-	if resolver == nil || len(algorithms) == 0 || len(encryptions) == 0 {
-		return nil, fmt.Errorf("%w: resolver and algorithm allowlists are required", ErrInvalidConfig)
+// NewDecrypter creates a decrypter using one static decryption key.
+func NewDecrypter(
+	key any,
+	keyAlgorithms []jose.KeyAlgorithm,
+	contentEncryptions []jose.ContentEncryption,
+	options ...Option,
+) (*Decrypter, error) {
+	if key == nil {
+		return nil, fmt.Errorf(
+			"%w: decryption key is nil",
+			ErrInvalidConfig,
+		)
 	}
-	c, err := makeConfig(options)
+
+	return NewDecrypterWithResolver(
+		staticResolver{
+			key: cloneKeyMaterial(key),
+		},
+		keyAlgorithms,
+		contentEncryptions,
+		options...,
+	)
+}
+
+// NewDecrypterWithResolver creates a decrypter using a dynamic key resolver.
+func NewDecrypterWithResolver(
+	resolver KeyResolver,
+	keyAlgorithms []jose.KeyAlgorithm,
+	contentEncryptions []jose.ContentEncryption,
+	options ...Option,
+) (*Decrypter, error) {
+	if resolver == nil {
+		return nil, fmt.Errorf(
+			"%w: key resolver is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	if len(keyAlgorithms) == 0 {
+		return nil, fmt.Errorf(
+			"%w: at least one key management algorithm is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	if len(contentEncryptions) == 0 {
+		return nil, fmt.Errorf(
+			"%w: at least one content encryption algorithm is required",
+			ErrInvalidConfig,
+		)
+	}
+
+	for _, algorithm := range keyAlgorithms {
+		if algorithm == "" {
+			return nil, fmt.Errorf(
+				"%w: key management algorithm is empty",
+				ErrInvalidConfig,
+			)
+		}
+	}
+
+	for _, encryption := range contentEncryptions {
+		if encryption == "" {
+			return nil, fmt.Errorf(
+				"%w: content encryption algorithm is empty",
+				ErrInvalidConfig,
+			)
+		}
+	}
+
+	config, err := makeConfig(options)
 	if err != nil {
 		return nil, err
 	}
-	return &Decrypter{resolver: resolver, algorithms: append([]jose.KeyAlgorithm(nil), algorithms...), encryptions: append([]jose.ContentEncryption(nil), encryptions...), config: c}, nil
+
+	return &Decrypter{
+		resolver: resolver,
+		keyAlgorithms: append(
+			[]jose.KeyAlgorithm(nil),
+			keyAlgorithms...,
+		),
+		contentEncryptions: append(
+			[]jose.ContentEncryption(nil),
+			contentEncryptions...,
+		),
+		config: config,
+	}, nil
 }
-func (d *Decrypter) Decrypt(ctx context.Context, raw string) ([]byte, error) {
-	v, err := d.DecryptToken(ctx, raw)
-	return v.Plaintext, err
+
+// Decrypt decrypts a compact JWE and returns its plaintext.
+func (decrypter *Decrypter) Decrypt(ctx context.Context, raw string) ([]byte, error) {
+	decrypted, err := decrypter.DecryptToken(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return decrypted.Plaintext, nil
 }
-func (d *Decrypter) DecryptToken(ctx context.Context, raw string) (Decrypted, error) {
-	var zero Decrypted
-	if d == nil {
-		return zero, fmt.Errorf("%w: decrypter is nil", ErrInvalidConfig)
+
+// DecryptToken decrypts a compact JWE and returns its authenticated header and plaintext.
+func (decrypter *Decrypter) DecryptToken(ctx context.Context, raw string) (Decrypted, error) {
+	if decrypter == nil ||
+		decrypter.resolver == nil ||
+		len(decrypter.keyAlgorithms) == 0 ||
+		len(decrypter.contentEncryptions) == 0 {
+		return Decrypted{}, fmt.Errorf(
+			"%w: decrypter is uninitialized",
+			ErrInvalidConfig,
+		)
 	}
-	if err := ctx.Err(); err != nil {
-		return zero, err
-	}
+
 	if raw == "" {
-		return zero, ErrMissingToken
+		return Decrypted{}, ErrMissingToken
 	}
-	if len(raw) > d.config.maxToken {
-		return zero, ErrTokenTooLarge
+
+	if len(raw) > decrypter.config.maxTokenSize {
+		return Decrypted{}, fmt.Errorf(
+			"%w: got %d bytes, limit is %d",
+			ErrTokenTooLarge,
+			len(raw),
+			decrypter.config.maxTokenSize,
+		)
 	}
-	if strings.Count(raw, ".") != 4 {
-		return zero, ErrMalformedToken
-	}
-	obj, err := jose.ParseEncryptedCompact(raw, d.algorithms, d.encryptions)
+
+	object, err := jose.ParseEncryptedCompact(
+		raw,
+		decrypter.keyAlgorithms,
+		decrypter.contentEncryptions,
+	)
 	if err != nil {
-		return zero, fmt.Errorf("%w: %w", ErrMalformedToken, err)
+		return Decrypted{}, fmt.Errorf(
+			"%w: parse compact JWE: %w",
+			ErrMalformedToken,
+			err,
+		)
 	}
-	h := Header{Algorithm: obj.Header.Algorithm, KeyID: obj.Header.KeyID}
-	if v, ok := obj.Header.ExtraHeaders[jose.HeaderType].(string); ok {
-		h.Type = v
-	}
-	if v, ok := obj.Header.ExtraHeaders[jose.HeaderContentType].(string); ok {
-		h.ContentType = v
-	}
-	if d.config.typ != "" && h.Type != d.config.typ {
-		return zero, ErrUnexpectedType
-	}
-	if d.config.cty != "" && h.ContentType != d.config.cty {
-		return zero, ErrUnexpectedContentType
-	}
-	key, err := d.resolver.Resolve(ctx, h)
+
+	header, err := parseHeader(object.Header)
 	if err != nil {
-		return zero, err
+		return Decrypted{}, err
 	}
-	plaintext, err := obj.Decrypt(key)
+
+	// Reject unsupported typ, cty, or zip before resolving the key.
+	if err := decrypter.validatePolicy(header); err != nil {
+		return Decrypted{}, err
+	}
+
+	key, err := decrypter.resolver.Resolve(ctx, header)
 	if err != nil {
-		return zero, fmt.Errorf("%w: %w", ErrDecrypt, err)
+		return Decrypted{}, err
 	}
-	if len(plaintext) > d.config.maxPlain {
-		return zero, ErrPlaintextTooLarge
+
+	plaintext, err := object.Decrypt(key)
+	if err != nil {
+		return Decrypted{}, fmt.Errorf(
+			"%w: decrypt JWE: %w",
+			ErrDecrypt,
+			err,
+		)
 	}
-	return Decrypted{Header: h, Plaintext: plaintext}, nil
+
+	if len(plaintext) > decrypter.config.maxPlaintextSize {
+		return Decrypted{}, fmt.Errorf(
+			"%w: got %d bytes, limit is %d",
+			ErrPlaintextTooLarge,
+			len(plaintext),
+			decrypter.config.maxPlaintextSize,
+		)
+	}
+
+	return Decrypted{
+		Header:    header,
+		Plaintext: plaintext,
+	}, nil
+}
+
+func (decrypter *Decrypter) validatePolicy(header Header) error {
+	if decrypter.config.typ != "" &&
+		header.Type != decrypter.config.typ {
+		return ErrUnexpectedType
+	}
+
+	if decrypter.config.cty != "" &&
+		header.ContentType != decrypter.config.cty {
+		return ErrUnexpectedContentType
+	}
+
+	if header.Compression != jose.NONE &&
+		header.Compression != decrypter.config.compression {
+		return fmt.Errorf(
+			"%w: expected %q, got %q",
+			ErrUnexpectedCompression,
+			decrypter.config.compression,
+			header.Compression,
+		)
+	}
+
+	return nil
 }

@@ -82,9 +82,6 @@ func main() {
 	}
 
 	verifier, err := xjwt.NewVerifier(
-		func() *AccessClaims {
-			return new(AccessClaims)
-		},
 		keySet,
 		xjwt.WithMethods(jwt.SigningMethodPS256),
 		xjwt.WithIssuer(issuer),
@@ -97,14 +94,15 @@ func main() {
 		log.Fatalf("create verifier: %v", err)
 	}
 
-	verified, err := verifier.VerifyToken(ctx, rawToken)
+	parsedClaims := new(AccessClaims)
+	header, err := verifier.VerifyToken(ctx, rawToken, parsedClaims)
 	if err != nil {
 		log.Fatalf("verify token: %v", err)
 	}
 
 	fmt.Printf("token: %s\n", rawToken)
-	fmt.Printf("algorithm: %s\n", verified.Header.Algorithm)
-	fmt.Printf("key ID: %s\n", verified.Header.KeyID)
-	fmt.Printf("subject: %s\n", verified.Claims.Subject)
-	fmt.Printf("permissions: %v\n", verified.Claims.Permissions)
+	fmt.Printf("algorithm: %s\n", header.Algorithm)
+	fmt.Printf("key ID: %s\n", header.KeyID)
+	fmt.Printf("subject: %s\n", parsedClaims.Subject)
+	fmt.Printf("permissions: %v\n", parsedClaims.Permissions)
 }

@@ -10,93 +10,68 @@ import (
 	"fmt"
 )
 
+// ParsePrivateKeyPEM parses an unencrypted RSA, ECDSA, or Ed25519 private key
+// from a PEM block containing PKCS#8, PKCS#1, or SEC1 DER.
 func ParsePrivateKeyPEM(data []byte) (crypto.PrivateKey, error) {
-	b, _ := pem.Decode(data)
-	if b == nil {
-		return nil, fmt.Errorf("%w: invalid PEM", ErrInvalidKey)
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("%w: invalid private key PEM", ErrInvalidKey)
 	}
-	return ParsePrivateKeyDER(b.Bytes)
+
+	return ParsePrivateKeyDER(block.Bytes)
 }
+
+// ParsePrivateKeyDER parses an unencrypted RSA, ECDSA, or Ed25519 private key
+// from PKCS#8, PKCS#1, or SEC1 DER.
 func ParsePrivateKeyDER(data []byte) (crypto.PrivateKey, error) {
-	if k, e := x509.ParsePKCS8PrivateKey(data); e == nil {
-		return supportedPrivate(k)
+	if key, err := x509.ParsePKCS8PrivateKey(data); err == nil {
+		return supportedPrivateKey(key)
 	}
-	if k, e := x509.ParsePKCS1PrivateKey(data); e == nil {
-		return supportedPrivate(k)
+	if key, err := x509.ParsePKCS1PrivateKey(data); err == nil {
+		return key, nil
 	}
-	if k, e := x509.ParseECPrivateKey(data); e == nil {
-		return supportedPrivate(k)
+	if key, err := x509.ParseECPrivateKey(data); err == nil {
+		return key, nil
 	}
-	return nil, fmt.Errorf("%w: unsupported private key DER", ErrInvalidKey)
+
+	return nil, fmt.Errorf(
+		"%w: unsupported private key DER",
+		ErrInvalidKey,
+	)
 }
+
+// ParsePublicKeyPEM parses an RSA, ECDSA, or Ed25519 public key from a PEM
+// block containing PKIX, PKCS#1, or X.509 certificate DER.
 func ParsePublicKeyPEM(data []byte) (crypto.PublicKey, error) {
-	b, _ := pem.Decode(data)
-	if b == nil {
-		return nil, fmt.Errorf("%w: invalid PEM", ErrInvalidKey)
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("%w: invalid public key PEM", ErrInvalidKey)
 	}
-	if b.Type == "CERTIFICATE" {
-		return ParseCertificatePublicKeyDER(b.Bytes)
-	}
-	return ParsePublicKeyDER(b.Bytes)
+
+	return ParsePublicKeyDER(block.Bytes)
 }
+
+// ParsePublicKeyDER parses an RSA, ECDSA, or Ed25519 public key from PKIX,
+// PKCS#1, or X.509 certificate DER.
 func ParsePublicKeyDER(data []byte) (crypto.PublicKey, error) {
-	if k, e := x509.ParsePKIXPublicKey(data); e == nil {
-		return supportedPublic(k)
+	if key, err := x509.ParsePKIXPublicKey(data); err == nil {
+		return supportedPublicKey(key)
 	}
-	if k, e := x509.ParsePKCS1PublicKey(data); e == nil {
-		return supportedPublic(k)
+	if key, err := x509.ParsePKCS1PublicKey(data); err == nil {
+		return key, nil
 	}
-	return nil, fmt.Errorf("%w: unsupported public key DER", ErrInvalidKey)
+	certificate, err := x509.ParseCertificate(data)
+	if err == nil {
+		return supportedPublicKey(certificate.PublicKey)
+	}
+
+	return nil, fmt.Errorf(
+		"%w: unsupported public key DER",
+		ErrInvalidKey,
+	)
 }
-func ParseCertificatePublicKeyPEM(data []byte) (crypto.PublicKey, error) {
-	b, _ := pem.Decode(data)
-	if b == nil {
-		return nil, fmt.Errorf("%w: invalid certificate PEM", ErrInvalidKey)
-	}
-	return ParseCertificatePublicKeyDER(b.Bytes)
-}
-func ParseCertificatePublicKeyDER(data []byte) (crypto.PublicKey, error) {
-	c, e := x509.ParseCertificate(data)
-	if e != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, e)
-	}
-	return supportedPublic(c.PublicKey)
-}
-func MarshalPrivateKeyDER(key crypto.PrivateKey) ([]byte, error) {
-	if _, e := supportedPrivate(key); e != nil {
-		return nil, e
-	}
-	b, e := x509.MarshalPKCS8PrivateKey(key)
-	if e != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, e)
-	}
-	return b, nil
-}
-func MarshalPrivateKeyPEM(key crypto.PrivateKey) ([]byte, error) {
-	b, e := MarshalPrivateKeyDER(key)
-	if e != nil {
-		return nil, e
-	}
-	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: b}), nil
-}
-func MarshalPublicKeyDER(key crypto.PublicKey) ([]byte, error) {
-	if _, e := supportedPublic(key); e != nil {
-		return nil, e
-	}
-	b, e := x509.MarshalPKIXPublicKey(key)
-	if e != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, e)
-	}
-	return b, nil
-}
-func MarshalPublicKeyPEM(key crypto.PublicKey) ([]byte, error) {
-	b, e := MarshalPublicKeyDER(key)
-	if e != nil {
-		return nil, e
-	}
-	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: b}), nil
-}
-func supportedPrivate(k any) (crypto.PrivateKey, error) {
+
+func supportedPrivateKey(k any) (crypto.PrivateKey, error) {
 	switch k.(type) {
 	case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
 		return k, nil
@@ -104,7 +79,8 @@ func supportedPrivate(k any) (crypto.PrivateKey, error) {
 		return nil, fmt.Errorf("%w: unsupported private key type %T", ErrInvalidKey, k)
 	}
 }
-func supportedPublic(k any) (crypto.PublicKey, error) {
+
+func supportedPublicKey(k any) (crypto.PublicKey, error) {
 	switch k.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey:
 		return k, nil

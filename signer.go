@@ -7,68 +7,89 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// DefaultMaxTokenSize is the default maximum compact JWT size accepted.
+const DefaultMaxTokenSize = 16 << 10
+
 type Signer struct {
 	key    SigningKey
 	config signerConfig
 }
 
 func NewSigner(key SigningKey, options ...SignerOption) (*Signer, error) {
-	if key.method == nil || key.key == nil {
-		return nil, fmt.Errorf("%w: signing key is uninitialized", ErrInvalidKey)
+	if err := key.validate(); err != nil {
+		return nil, err
 	}
-	c := signerConfig{typ: "JWT", includeTyp: true, maxSize: DefaultMaxTokenSize}
-	for _, o := range options {
-		if o == nil {
+
+	c := signerConfig{
+		typ:        "JWT",
+		includeTyp: true,
+		maxSize:    DefaultMaxTokenSize,
+	}
+
+	for _, option := range options {
+		if option == nil {
 			return nil, fmt.Errorf("%w: nil signer option", ErrInvalidConfig)
 		}
-		if err := o.applySigner(&c); err != nil {
+		if err := option.applySigner(&c); err != nil {
 			return nil, err
 		}
 	}
-	return &Signer{key: key, config: c}, nil
+
+	return &Signer{
+		key:    key,
+		config: c,
+	}, nil
 }
+
 func (s *Signer) Sign(ctx context.Context, claims jwt.Claims) (string, error) {
 	if s == nil {
 		return "", fmt.Errorf("%w: signer is nil", ErrInvalidConfig)
 	}
-	if err := ctx.Err(); err != nil {
-		return "", err
+	if ctx == nil {
+		return "", fmt.Errorf("%w: context is nil", ErrInvalidConfig)
 	}
 	if claims == nil {
 		return "", fmt.Errorf("%w: claims are nil", ErrInvalidClaims)
 	}
+
 	token := jwt.NewWithClaims(s.key.method, claims)
-	if s.config.includeTyp {
-		token.Header["typ"] = s.config.typ
-	} else {
-		delete(token.Header, "typ")
+	s.applyHeaders(token)
+
+	input, err := token.SigningString()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrSign, err)
 	}
-	if s.config.cty != "" {
-		token.Header["cty"] = s.config.cty
+
+	signature, err := s.key.signInput(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrSign, err)
 	}
-	if s.key.id != "" {
-		token.Header["kid"] = s.key.id
+
+	if len(signature) == 0 {
+		return "", fmt.Errorf(
+			"%w: %w: signing method returned an empty signature",
+			ErrSign,
+			ErrInvalidSignature,
+		)
 	}
-	var raw string
-	var err error
-	if ext, ok := s.key.method.(*externalMethod); ok {
-		input, signErr := token.SigningString()
-		if signErr != nil {
-			return "", fmt.Errorf("%w: %v", ErrSign, signErr)
-		}
-		sig, signErr := ext.signWithContext(ctx, input)
-		if signErr != nil {
-			return "", fmt.Errorf("%w: %v", ErrSign, signErr)
-		}
-		raw = input + "." + token.EncodeSegment(sig)
-	} else {
-		raw, err = token.SignedString(s.key.key)
-		if err != nil {
-			return "", fmt.Errorf("%w: %w", ErrSign, err)
-		}
-	}
-	if len(raw) > s.config.maxSize {
+
+	encodedSignature := token.EncodeSegment(signature)
+
+	if len(input)+1+len(encodedSignature) > s.config.maxSize {
 		return "", ErrTokenTooLarge
 	}
-	return raw, nil
+
+	return input + "." + encodedSignature, nil
+}
+
+func (s *Signer) applyHeaders(token *jwt.Token) {
+	if s.config.includeTyp {
+		token.Header[headerParamType] = s.config.typ
+	} else {
+		delete(token.Header, headerParamType)
+	}
+
+	if s.key.id != "" {
+		token.Header[headerParamKeyID] = s.key.id
+	}
 }
