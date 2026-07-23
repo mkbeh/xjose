@@ -9,6 +9,11 @@ vars:
   PWD_DIR:
     sh: pwd
 
+  BENCH_GOMAXPROCS: "1"
+  BENCH_PATTERN: "^Benchmark"
+  BENCH_TIME: "2s"
+  BENCH_COUNT: "5"
+
 env:
   GOWORK: "off"
 
@@ -34,10 +39,13 @@ tasks:
       - task: lint-root
 
   test:
-    desc: "Test root module"
+    desc: "Run all tests"
     cmds:
       - task: vendor-root
       - task: test-root
+      - task: test-jwe
+      - task: test-jwk
+      - task: test-jwks
 
   tidy-examples:
     desc: "Tidy example module dependencies"
@@ -103,8 +111,31 @@ tasks:
 
   test-root:
     desc: "Test root module"
+    env:
+      GOWORK: "off"
     cmds:
       - go test -mod=vendor -race -v -count=1 ./...
+
+  test-jwe:
+    desc: "Test JWE module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwe
+
+  test-jwk:
+    desc: "Test JWK module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwk
+
+  test-jwks:
+    desc: "Test JWKS module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwks
 
   coverage:
     desc: Run tests and print total coverage
@@ -118,6 +149,32 @@ tasks:
       - coverage
     cmds:
       - go tool cover -html=coverage.out -o coverage.html
+
+  benchmark:
+    desc: "Run all benchmarks"
+    aliases:
+      - bench
+    cmds:
+      - task: benchmark:root
+      - task: benchmark:jwe
+
+  benchmark:root:
+    desc: "Run root module benchmarks"
+    aliases:
+      - bench:root
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: .
+
+  benchmark:jwe:
+    desc: "Run JWE benchmarks"
+    aliases:
+      - bench:jwe
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: ./jwe
 
   _run-linter:
     desc: "Run golangci-lint in Docker"
@@ -135,3 +192,33 @@ tasks:
         -w {{.WORK_DIR}}
         golangci/golangci-lint:{{.LINTER_VER}}
         golangci-lint run --timeout 5m --fix --modules-download-mode vendor
+
+  _run-benchmarks:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    dir: "{{.WORK_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
+      GOMAXPROCS: "{{.BENCH_GOMAXPROCS}}"
+    cmds:
+      - >
+        go test
+        -run='^$'
+        -bench='{{.BENCH_PATTERN}}'
+        -benchmem
+        -benchtime={{.BENCH_TIME}}
+        -count={{.BENCH_COUNT}}
+        ./...
+
+  _run-module-tests:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    dir: "{{.WORK_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
+    cmds:
+      - go test -mod=readonly -race -v -count=1 ./...
