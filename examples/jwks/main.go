@@ -14,6 +14,17 @@ import (
 	"github.com/mkbeh/xjwt/jwks"
 )
 
+const (
+	issuer        = "https://auth.example.com"
+	audience      = "orders-api"
+	tokenType     = "access+jwt"
+	tokenLifetime = 15 * time.Minute
+	rsaKeyBits    = 2048
+
+	previousKeyID = "rsa-signing-2026-06"
+	currentKeyID  = "rsa-signing-2026-07"
+)
+
 type AccessClaims struct {
 	UserID string `json:"user_id"`
 
@@ -23,77 +34,47 @@ type AccessClaims struct {
 func main() {
 	ctx := context.Background()
 
-	// Generate two key pairs to demonstrate verification-key rotation.
-	oldPrivateKey, err := rsa.GenerateKey(
-		rand.Reader,
-		2048,
-	)
-	if err != nil {
-		log.Fatalf("generate old RSA key: %v", err)
-	}
+	// Keep the previous public key available while issuing with the current key.
+	previousPrivateKey := generateRSAKey("previous")
+	currentPrivateKey := generateRSAKey("current")
 
-	currentPrivateKey, err := rsa.GenerateKey(
-		rand.Reader,
-		2048,
+	previousVerificationKey, err := xjwt.NewVerificationKey(
+		previousKeyID,
+		jwt.SigningMethodPS256,
+		&previousPrivateKey.PublicKey,
 	)
 	if err != nil {
-		log.Fatalf("generate current RSA key: %v", err)
-	}
-
-	oldVerificationKey, err := xjwt.NewVerificationKey(
-		"rsa-2026-06",
-		jwt.SigningMethodRS256,
-		&oldPrivateKey.PublicKey,
-	)
-	if err != nil {
-		log.Fatalf(
-			"create old verification key: %v",
-			err,
-		)
+		log.Fatalf("create previous verification key: %v", err)
 	}
 
 	currentSigningKey, err := xjwt.NewSigningKey(
-		"rsa-2026-07",
-		jwt.SigningMethodRS256,
+		currentKeyID,
+		jwt.SigningMethodPS256,
 		currentPrivateKey,
 	)
 	if err != nil {
-		log.Fatalf(
-			"create current signing key: %v",
-			err,
-		)
+		log.Fatalf("create current signing key: %v", err)
 	}
 
 	verificationKeySet, err := xjwt.NewStaticKeySet(
-		oldVerificationKey,
+		previousVerificationKey,
 		currentSigningKey.VerificationKey(),
 	)
 	if err != nil {
-		log.Fatalf(
-			"create verification key set: %v",
-			err,
-		)
+		log.Fatalf("create verification key set: %v", err)
 	}
 
-	// Export both public verification keys as a JWKS document.
-	publicKeySet, err := jwks.FromStaticKeySet(
-		verificationKeySet,
-	)
+	// Export public verification keys as JWKS and parse the published document.
+	publicKeySet, err := jwks.FromStaticKeySet(verificationKeySet)
 	if err != nil {
 		log.Fatalf("export JWKS: %v", err)
 	}
 
-	jwksJSON, err := json.MarshalIndent(
-		publicKeySet,
-		"",
-		"  ",
-	)
+	jwksJSON, err := json.MarshalIndent(publicKeySet, "", "  ")
 	if err != nil {
 		log.Fatalf("marshal JWKS: %v", err)
 	}
 
-	// Parse a JWKS document received from a trusted source. Parsing only loads
-	// the published public keys; the verifier defines the allowed algorithms.
 	parsedKeySet, err := jwks.Parse(jwksJSON)
 	if err != nil {
 		log.Fatalf("parse JWKS: %v", err)
@@ -101,7 +82,7 @@ func main() {
 
 	signer, err := xjwt.NewSigner(
 		currentSigningKey,
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create signer: %v", err)
@@ -109,60 +90,59 @@ func main() {
 
 	verifier, err := xjwt.NewVerifier(
 		parsedKeySet,
-		xjwt.WithMethods(
-			jwt.SigningMethodRS256,
-		),
-		xjwt.WithIssuer(
-			"https://auth.example.com",
-		),
-		xjwt.WithAudience("orders-api"),
-		xjwt.WithType("access+jwt"),
+		xjwt.WithMethods(jwt.SigningMethodPS256),
+		xjwt.WithIssuer(issuer),
+		xjwt.WithAudience(audience),
+		xjwt.WithType(tokenType),
 		xjwt.RequireIssuedAt(),
+		xjwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create verifier: %v", err)
 	}
 
-	now := time.Now()
-
-	token, err := signer.Sign(
+	// Issue with the current key; the verifier selects its public key by kid.
+	now := time.Now().UTC()
+	rawToken, err := signer.Sign(
 		ctx,
 		&AccessClaims{
 			UserID: "user-123",
 			RegisteredClaims: jwt.RegisteredClaims{
-				Issuer:  "https://auth.example.com",
-				Subject: "user-123",
-				Audience: jwt.ClaimStrings{
-					"orders-api",
-				},
-				ExpiresAt: jwt.NewNumericDate(
-					now.Add(15 * time.Minute),
-				),
-				IssuedAt: jwt.NewNumericDate(now),
-				ID:       "token-123",
+				Issuer:    issuer,
+				Subject:   "user-123",
+				Audience:  jwt.ClaimStrings{audience},
+				ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
+				IssuedAt:  jwt.NewNumericDate(now),
+				ID:        "token-123",
 			},
 		},
 	)
 	if err != nil {
-		log.Fatalf("sign JWT: %v", err)
+		log.Fatalf("sign token: %v", err)
 	}
 
-	claims := new(AccessClaims)
-
+	verifiedClaims := new(AccessClaims)
 	header, err := verifier.VerifyToken(
 		ctx,
-		token,
-		claims,
+		rawToken,
+		verifiedClaims,
 	)
 	if err != nil {
-		log.Fatalf("verify JWT: %v", err)
+		log.Fatalf("verify token: %v", err)
 	}
 
 	fmt.Printf("JWKS:\n%s\n\n", jwksJSON)
-	fmt.Printf("verified user: %s\n", claims.UserID)
+	fmt.Printf("token: %s\n", rawToken)
+	fmt.Printf("verified user: %s\n", verifiedClaims.UserID)
 	fmt.Printf("verified key ID: %s\n", header.KeyID)
-	fmt.Printf(
-		"verified algorithm: %s\n",
-		header.Algorithm,
-	)
+	fmt.Printf("verified algorithm: %s\n", header.Algorithm)
+}
+
+func generateRSAKey(name string) *rsa.PrivateKey {
+	privateKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
+	if err != nil {
+		log.Fatalf("generate %s RSA key: %v", name, err)
+	}
+
+	return privateKey
 }

@@ -12,8 +12,11 @@ import (
 )
 
 const (
-	issuer   = "https://auth.example.com"
-	audience = "example-api"
+	issuer        = "https://auth.example.com"
+	audience      = "example-api"
+	keyID         = "hmac-2026-07"
+	tokenType     = "access+jwt"
+	tokenLifetime = 15 * time.Minute
 )
 
 type AccessClaims struct {
@@ -25,14 +28,14 @@ type AccessClaims struct {
 func main() {
 	ctx := context.Background()
 
-	// Generate a 256-bit secret. In production, load it from a secret manager.
+	// HMAC uses the same secret to sign and verify tokens.
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
 		log.Fatalf("generate HMAC secret: %v", err)
 	}
 
 	signingKey, err := xjwt.NewSigningKey(
-		"hmac-2026-07",
+		keyID,
 		jwt.SigningMethodHS256,
 		secret,
 	)
@@ -42,20 +45,21 @@ func main() {
 
 	signer, err := xjwt.NewSigner(
 		signingKey,
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create signer: %v", err)
 	}
 
-	now := time.Now()
+	// Issue a short-lived access token with typed custom claims.
+	now := time.Now().UTC()
 	claims := &AccessClaims{
 		Role: "admin",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Subject:   "user-123",
 			Audience:  jwt.ClaimStrings{audience},
-			ExpiresAt: jwt.NewNumericDate(now.Add(15 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        "token-123",
 		},
@@ -66,21 +70,26 @@ func main() {
 		log.Fatalf("sign token: %v", err)
 	}
 
+	// Verify the signature and enforce the expected token policy.
 	verifier, err := xjwt.NewVerifier(
 		signingKey.VerificationKey(),
 		xjwt.WithMethods(jwt.SigningMethodHS256),
 		xjwt.WithIssuer(issuer),
 		xjwt.WithAudience(audience),
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(15*time.Minute),
+		xjwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create verifier: %v", err)
 	}
 
-	parsedClaims := new(AccessClaims)
-	header, err := verifier.VerifyToken(ctx, rawToken, parsedClaims)
+	verifiedClaims := new(AccessClaims)
+	header, err := verifier.VerifyToken(
+		ctx,
+		rawToken,
+		verifiedClaims,
+	)
 	if err != nil {
 		log.Fatalf("verify token: %v", err)
 	}
@@ -88,6 +97,6 @@ func main() {
 	fmt.Printf("token: %s\n", rawToken)
 	fmt.Printf("algorithm: %s\n", header.Algorithm)
 	fmt.Printf("key ID: %s\n", header.KeyID)
-	fmt.Printf("subject: %s\n", parsedClaims.Subject)
-	fmt.Printf("role: %s\n", parsedClaims.Role)
+	fmt.Printf("subject: %s\n", verifiedClaims.Subject)
+	fmt.Printf("role: %s\n", verifiedClaims.Role)
 }

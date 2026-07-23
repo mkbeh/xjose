@@ -13,8 +13,12 @@ import (
 )
 
 const (
-	issuer   = "https://auth.example.com"
-	audience = "example-api"
+	issuer        = "https://auth.example.com"
+	audience      = "example-api"
+	keyID         = "rsa-2026-07"
+	tokenType     = "access+jwt"
+	tokenLifetime = 15 * time.Minute
+	rsaKeyBits    = 2048
 )
 
 type AccessClaims struct {
@@ -26,14 +30,14 @@ type AccessClaims struct {
 func main() {
 	ctx := context.Background()
 
-	// The issuing service keeps the private key; verifiers need only the public key.
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	// The issuer keeps the private key; verifiers receive only the public key.
+	privateKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
 	if err != nil {
 		log.Fatalf("generate RSA key: %v", err)
 	}
 
 	signingKey, err := xjwt.NewSigningKey(
-		"rsa-2026-07",
+		keyID,
 		jwt.SigningMethodPS256,
 		privateKey,
 	)
@@ -43,20 +47,24 @@ func main() {
 
 	signer, err := xjwt.NewSigner(
 		signingKey,
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create signer: %v", err)
 	}
 
-	now := time.Now()
+	// Issue a short-lived access token with typed custom claims.
+	now := time.Now().UTC()
 	claims := &AccessClaims{
-		Permissions: []string{"orders:read", "orders:write"},
+		Permissions: []string{
+			"orders:read",
+			"orders:write",
+		},
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Subject:   "service-123",
 			Audience:  jwt.ClaimStrings{audience},
-			ExpiresAt: jwt.NewNumericDate(now.Add(15 * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        "token-456",
 		},
@@ -67,8 +75,9 @@ func main() {
 		log.Fatalf("sign token: %v", err)
 	}
 
+	// Build a verifier from public key material only.
 	verificationKey, err := xjwt.NewVerificationKey(
-		"rsa-2026-07",
+		keyID,
 		jwt.SigningMethodPS256,
 		&privateKey.PublicKey,
 	)
@@ -78,7 +87,7 @@ func main() {
 
 	keySet, err := xjwt.NewStaticKeySet(verificationKey)
 	if err != nil {
-		log.Fatalf("create key set: %v", err)
+		log.Fatalf("create verification key set: %v", err)
 	}
 
 	verifier, err := xjwt.NewVerifier(
@@ -86,16 +95,20 @@ func main() {
 		xjwt.WithMethods(jwt.SigningMethodPS256),
 		xjwt.WithIssuer(issuer),
 		xjwt.WithAudience(audience),
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(15*time.Minute),
+		xjwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create verifier: %v", err)
 	}
 
-	parsedClaims := new(AccessClaims)
-	header, err := verifier.VerifyToken(ctx, rawToken, parsedClaims)
+	verifiedClaims := new(AccessClaims)
+	header, err := verifier.VerifyToken(
+		ctx,
+		rawToken,
+		verifiedClaims,
+	)
 	if err != nil {
 		log.Fatalf("verify token: %v", err)
 	}
@@ -103,6 +116,9 @@ func main() {
 	fmt.Printf("token: %s\n", rawToken)
 	fmt.Printf("algorithm: %s\n", header.Algorithm)
 	fmt.Printf("key ID: %s\n", header.KeyID)
-	fmt.Printf("subject: %s\n", parsedClaims.Subject)
-	fmt.Printf("permissions: %v\n", parsedClaims.Permissions)
+	fmt.Printf("subject: %s\n", verifiedClaims.Subject)
+	fmt.Printf(
+		"permissions: %v\n",
+		verifiedClaims.Permissions,
+	)
 }

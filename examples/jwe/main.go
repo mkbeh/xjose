@@ -15,8 +15,14 @@ import (
 )
 
 const (
-	issuer   = "https://auth.example.com"
-	audience = "orders-api"
+	issuer        = "https://auth.example.com"
+	audience      = "orders-api"
+	tokenType     = "access+jwt"
+	tokenLifetime = 15 * time.Minute
+	rsaKeyBits    = 2048
+
+	signingKeyID    = "signing-2026-07"
+	encryptionKeyID = "encryption-2026-07"
 )
 
 type AccessClaims struct {
@@ -29,17 +35,11 @@ type AccessClaims struct {
 func main() {
 	ctx := context.Background()
 
-	// Create the signing components for the inner JWT.
-	signingPrivateKey, err := rsa.GenerateKey(
-		rand.Reader,
-		2048,
-	)
-	if err != nil {
-		log.Fatalf("generate signing key: %v", err)
-	}
+	// Create the signing and verification components for the inner JWT.
+	signingPrivateKey := generateRSAKey("signing")
 
 	signingKey, err := xjwt.NewSigningKey(
-		"signing-2026-07",
+		signingKeyID,
 		jwt.SigningMethodPS256,
 		signingPrivateKey,
 	)
@@ -49,43 +49,33 @@ func main() {
 
 	signer, err := xjwt.NewSigner(
 		signingKey,
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 	)
 	if err != nil {
-		log.Fatalf("create signer: %v", err)
+		log.Fatalf("create JWT signer: %v", err)
 	}
 
 	jwtVerifier, err := xjwt.NewVerifier(
 		signingKey.VerificationKey(),
-		xjwt.WithMethods(
-			jwt.SigningMethodPS256,
-		),
+		xjwt.WithMethods(jwt.SigningMethodPS256),
 		xjwt.WithIssuer(issuer),
 		xjwt.WithAudience(audience),
-		xjwt.WithType("access+jwt"),
+		xjwt.WithType(tokenType),
 		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(
-			15*time.Minute,
-		),
+		xjwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create JWT verifier: %v", err)
 	}
 
-	// Create separate encryption components for the outer JWE.
-	encryptionPrivateKey, err := rsa.GenerateKey(
-		rand.Reader,
-		2048,
-	)
-	if err != nil {
-		log.Fatalf("generate encryption key: %v", err)
-	}
+	// Create separate encryption and decryption components for the outer JWE.
+	encryptionPrivateKey := generateRSAKey("encryption")
 
 	encrypter, err := jwe.NewEncrypter(
 		jose.Recipient{
 			Algorithm: jose.RSA_OAEP_256,
 			Key:       &encryptionPrivateKey.PublicKey,
-			KeyID:     "encryption-2026-07",
+			KeyID:     encryptionKeyID,
 		},
 		jose.A256GCM,
 		jwe.WithContentType("JWT"),
@@ -123,10 +113,9 @@ func main() {
 		log.Fatalf("create nested JWT verifier: %v", err)
 	}
 
-	// Sign the claims and encrypt the resulting compact JWT.
-	now := time.Now()
-
-	token, err := nestedIssuer.Issue(
+	// Sign the claims, then encrypt the resulting compact JWT.
+	now := time.Now().UTC()
+	rawToken, err := nestedIssuer.Issue(
 		ctx,
 		&AccessClaims{
 			UserID: "user-123",
@@ -135,16 +124,12 @@ func main() {
 				"orders:write",
 			},
 			RegisteredClaims: jwt.RegisteredClaims{
-				Issuer:  issuer,
-				Subject: "user-123",
-				Audience: jwt.ClaimStrings{
-					audience,
-				},
-				ExpiresAt: jwt.NewNumericDate(
-					now.Add(15 * time.Minute),
-				),
-				IssuedAt: jwt.NewNumericDate(now),
-				ID:       "token-123",
+				Issuer:    issuer,
+				Subject:   "user-123",
+				Audience:  jwt.ClaimStrings{audience},
+				ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
+				IssuedAt:  jwt.NewNumericDate(now),
+				ID:        "token-123",
 			},
 		},
 	)
@@ -152,43 +137,39 @@ func main() {
 		log.Fatalf("issue nested JWT: %v", err)
 	}
 
-	// Decrypt the outer JWE and verify the inner JWT.
-	claims := new(AccessClaims)
-
+	// Decrypt the outer JWE, then verify the inner JWT.
+	verifiedClaims := new(AccessClaims)
 	verified, err := nestedVerifier.VerifyToken(
 		ctx,
-		token,
-		claims,
+		rawToken,
+		verifiedClaims,
 	)
 	if err != nil {
 		log.Fatalf("verify nested JWT: %v", err)
 	}
 
-	fmt.Printf("nested JWT: %s\n\n", token)
-	fmt.Printf("verified user: %s\n", claims.UserID)
-	fmt.Printf("verified scopes: %v\n", claims.Scopes)
-	fmt.Printf(
-		"JWE key algorithm: %s\n",
-		verified.JWEHeader.Algorithm,
-	)
+	fmt.Printf("nested JWT: %s\n\n", rawToken)
+	fmt.Printf("verified user: %s\n", verifiedClaims.UserID)
+	fmt.Printf("verified scopes: %v\n", verifiedClaims.Scopes)
+	fmt.Printf("JWE key algorithm: %s\n", verified.JWEHeader.Algorithm)
 	fmt.Printf(
 		"JWE content encryption: %s\n",
 		verified.JWEHeader.Encryption,
 	)
-	fmt.Printf(
-		"JWE key ID: %s\n",
-		verified.JWEHeader.KeyID,
-	)
+	fmt.Printf("JWE key ID: %s\n", verified.JWEHeader.KeyID)
 	fmt.Printf(
 		"JWE content type: %s\n",
 		verified.JWEHeader.ContentType,
 	)
-	fmt.Printf(
-		"JWT algorithm: %s\n",
-		verified.JWTHeader.Algorithm,
-	)
-	fmt.Printf(
-		"JWT key ID: %s\n",
-		verified.JWTHeader.KeyID,
-	)
+	fmt.Printf("JWT algorithm: %s\n", verified.JWTHeader.Algorithm)
+	fmt.Printf("JWT key ID: %s\n", verified.JWTHeader.KeyID)
+}
+
+func generateRSAKey(name string) *rsa.PrivateKey {
+	privateKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
+	if err != nil {
+		log.Fatalf("generate %s RSA key: %v", name, err)
+	}
+
+	return privateKey
 }
