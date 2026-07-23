@@ -143,13 +143,31 @@ func TestHMACKeyMaterialIsCopied(t *testing.T) {
 	secret[0] ^= 0xff
 
 	verification := key.VerificationKey()
-	first := verification.Key().([]byte)
+
+	firstValue := verification.Key()
+	first, ok := firstValue.([]byte)
+	if !ok {
+		t.Fatalf(
+			"VerificationKey.Key() type = %T, want []byte",
+			firstValue,
+		)
+	}
+
 	if first[0] != originalFirstByte {
 		t.Fatal("constructor retained caller-owned HMAC bytes")
 	}
 
 	first[0] ^= 0xff
-	second := verification.Key().([]byte)
+
+	secondValue := verification.Key()
+	second, ok := secondValue.([]byte)
+	if !ok {
+		t.Fatalf(
+			"VerificationKey.Key() type = %T, want []byte",
+			secondValue,
+		)
+	}
+
 	if second[0] != originalFirstByte {
 		t.Fatal("Key() exposed internal HMAC bytes")
 	}
