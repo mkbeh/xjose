@@ -22,7 +22,7 @@ go run .
 Or from the repository root:
 
 ```shell
-go run ./examples/hmac
+go run ./examples/jwt_hmac
 ```
 
 ## Expected output

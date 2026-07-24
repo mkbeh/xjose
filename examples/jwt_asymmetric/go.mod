@@ -1,4 +1,4 @@
-module assymetric
+module jwt_asymmetric
 
 go 1.26
 

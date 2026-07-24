@@ -1,4 +1,4 @@
-module hmac
+module jwt_hmac
 
 go 1.26
 

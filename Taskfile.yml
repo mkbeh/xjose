@@ -137,6 +137,13 @@ tasks:
         vars:
           WORK_DIR: ./jwks
 
+  test-jws:
+    desc: "Test JWS module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jws
+
   coverage:
     desc: Run tests and print total coverage
     cmds:

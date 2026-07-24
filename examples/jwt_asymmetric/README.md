@@ -25,7 +25,7 @@ go run .
 Or from the repository root:
 
 ```shell
-go run ./examples/asymmetric
+go run ./examples/jwt_asymmetric
 ```
 
 ## Expected output
