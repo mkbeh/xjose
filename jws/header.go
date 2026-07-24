@@ -8,11 +8,11 @@ import (
 
 const maxAlgorithmLength = 64
 
-// Header contains integrity-protected JOSE header parameters associated with
-// a JWS signature.
+// Header contains parameters from a JWS Protected Header.
 //
-// Header values are read-only. JSONWebKey and ExtraHeaders reference values
-// produced by go-jose during parsing and must not be mutated.
+// The parameters are authenticated only after the corresponding signature has
+// been successfully verified. Header values are read-only; JSONWebKey and
+// ExtraHeaders reference values produced by go-jose and must not be mutated.
 type Header struct {
 	Algorithm    jose.SignatureAlgorithm
 	KeyID        string
