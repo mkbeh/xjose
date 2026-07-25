@@ -47,6 +47,7 @@ func TestSignaturePolicies(t *testing.T) {
 		RequireThreshold(1, "b", "c"),
 	).Evaluate([]SignatureResult{validA, validB}))
 }
+
 func TestSignaturePolicyValidation(t *testing.T) {
 	secret := bytes.Repeat([]byte{0xa3}, 32)
 

@@ -82,11 +82,11 @@ func (encrypter *MultiEncrypter) Encrypt(plaintext []byte) (string, error) {
 //
 // Empty auth data is treated as absent. Auth data is authenticated but remains
 // publicly visible in the serialized JWE object.
-func (encrypter *MultiEncrypter) EncryptWithAuthData(plaintext []byte, authData []byte) (string, error) {
+func (encrypter *MultiEncrypter) EncryptWithAuthData(plaintext, authData []byte) (string, error) {
 	return encrypter.encrypt(plaintext, authData)
 }
 
-func (encrypter *MultiEncrypter) encrypt(plaintext []byte, authData []byte) (string, error) {
+func (encrypter *MultiEncrypter) encrypt(plaintext, authData []byte) (string, error) {
 	if encrypter == nil {
 		return "", fmt.Errorf(
 			"%w: multi-encrypter is uninitialized",

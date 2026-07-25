@@ -60,6 +60,7 @@ func TestStaticResolverJWKAndJWKS(t *testing.T) {
 		t.Fatalf("KeyID = %q, want %q", resolved.KeyID, "key-1")
 	}
 }
+
 func TestStaticResolverRejectsAmbiguousJWKS(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x94}, 32)
 	set := jose.JSONWebKeySet{
@@ -88,6 +89,7 @@ func TestStaticResolverRejectsAmbiguousJWKS(t *testing.T) {
 	})
 	requireErrorIs(t, err, ErrInvalidConfig)
 }
+
 func TestStaticResolverUsesKeySnapshot(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x95}, 32)
 	original := bytes.Clone(secret)
@@ -110,6 +112,7 @@ func TestStaticResolverUsesKeySnapshot(t *testing.T) {
 	}
 	requireBytesEqual(t, resolvedSecret, original)
 }
+
 func TestResolversRejectNilValues(t *testing.T) {
 	_, err := newStaticResolver(nil)
 	requireErrorIs(t, err, ErrInvalidConfig)

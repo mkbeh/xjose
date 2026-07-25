@@ -8,8 +8,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const (
@@ -24,7 +24,7 @@ const (
 type AccessClaims struct {
 	Permissions []string `json:"permissions"`
 
-	jwt.RegisteredClaims
+	gojwt.RegisteredClaims
 }
 
 func main() {
@@ -36,18 +36,18 @@ func main() {
 		log.Fatalf("generate RSA key: %v", err)
 	}
 
-	signingKey, err := xjwt.NewSigningKey(
+	signingKey, err := jwt.NewSigningKey(
 		keyID,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		privateKey,
 	)
 	if err != nil {
 		log.Fatalf("create signing key: %v", err)
 	}
 
-	signer, err := xjwt.NewSigner(
+	signer, err := jwt.NewSigner(
 		signingKey,
-		xjwt.WithType(tokenType),
+		jwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create signer: %v", err)
@@ -60,12 +60,12 @@ func main() {
 			"orders:read",
 			"orders:write",
 		},
-		RegisteredClaims: jwt.RegisteredClaims{
+		RegisteredClaims: gojwt.RegisteredClaims{
 			Issuer:    issuer,
 			Subject:   "service-123",
-			Audience:  jwt.ClaimStrings{audience},
-			ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
-			IssuedAt:  jwt.NewNumericDate(now),
+			Audience:  gojwt.ClaimStrings{audience},
+			ExpiresAt: gojwt.NewNumericDate(now.Add(tokenLifetime)),
+			IssuedAt:  gojwt.NewNumericDate(now),
 			ID:        "token-456",
 		},
 	}
@@ -76,28 +76,28 @@ func main() {
 	}
 
 	// Build a verifier from public key material only.
-	verificationKey, err := xjwt.NewVerificationKey(
+	verificationKey, err := jwt.NewVerificationKey(
 		keyID,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		&privateKey.PublicKey,
 	)
 	if err != nil {
 		log.Fatalf("create verification key: %v", err)
 	}
 
-	keySet, err := xjwt.NewStaticKeySet(verificationKey)
+	keySet, err := jwt.NewStaticKeySet(verificationKey)
 	if err != nil {
 		log.Fatalf("create verification key set: %v", err)
 	}
 
-	verifier, err := xjwt.NewVerifier(
+	verifier, err := jwt.NewVerifier(
 		keySet,
-		xjwt.WithMethods(jwt.SigningMethodPS256),
-		xjwt.WithIssuer(issuer),
-		xjwt.WithAudience(audience),
-		xjwt.WithType(tokenType),
-		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(tokenLifetime),
+		jwt.WithMethods(gojwt.SigningMethodPS256),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(audience),
+		jwt.WithType(tokenType),
+		jwt.RequireIssuedAt(),
+		jwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create verifier: %v", err)

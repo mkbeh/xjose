@@ -4,33 +4,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 type nestedTestClaims struct {
 	Scope string `json:"scope"`
-	jwt.RegisteredClaims
+	gojwt.RegisteredClaims
 }
 
 func newNestedJWTSignerAndVerifier(
 	t *testing.T,
 	secret []byte,
-) (*xjwt.Signer, *xjwt.Verifier) {
+) (*jwt.Signer, *jwt.Verifier) {
 	t.Helper()
 
-	key, err := xjwt.NewSigningKey(
+	key, err := jwt.NewSigningKey(
 		"signing-key",
-		jwt.SigningMethodHS256,
+		gojwt.SigningMethodHS256,
 		secret,
 	)
 	requireNoError(t, err)
 
-	signer, err := xjwt.NewSigner(key)
+	signer, err := jwt.NewSigner(key)
 	requireNoError(t, err)
-	verifier, err := xjwt.NewVerifier(
+	verifier, err := jwt.NewVerifier(
 		key.VerificationKey(),
-		xjwt.WithMethods(jwt.SigningMethodHS256),
+		jwt.WithMethods(gojwt.SigningMethodHS256),
 	)
 	requireNoError(t, err)
 
@@ -71,9 +71,9 @@ func TestNestedJWTSignEncryptDecryptVerify(t *testing.T) {
 
 	claims := &nestedTestClaims{
 		Scope: "orders:read",
-		RegisteredClaims: jwt.RegisteredClaims{
+		RegisteredClaims: gojwt.RegisteredClaims{
 			Subject:   "user-123",
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 	}
 	raw, err := issuer.Issue(testContext(), claims)
@@ -92,7 +92,7 @@ func TestNestedJWTSignEncryptDecryptVerify(t *testing.T) {
 		headers.JWEHeader.ExtraHeaders["outer"] != "header" {
 		t.Fatalf("JWE header = %#v", headers.JWEHeader)
 	}
-	if headers.JWTHeader.Algorithm != jwt.SigningMethodHS256.Alg() ||
+	if headers.JWTHeader.Algorithm != gojwt.SigningMethodHS256.Alg() ||
 		headers.JWTHeader.KeyID != "signing-key" ||
 		headers.JWTHeader.Type != "JWT" {
 		t.Fatalf("JWT header = %#v", headers.JWTHeader)
@@ -114,7 +114,7 @@ func TestNewNestedIssuerRejectsInvalidConfiguration(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		signer    *xjwt.Signer
+		signer    *jwt.Signer
 		encrypter *Encrypter
 	}{
 		{name: "nil signer", encrypter: validEncrypter},
@@ -143,7 +143,7 @@ func TestNewNestedVerifierRejectsInvalidConfiguration(t *testing.T) {
 	tests := []struct {
 		name      string
 		decrypter *Decrypter
-		verifier  *xjwt.Verifier
+		verifier  *jwt.Verifier
 	}{
 		{name: "nil decrypter", verifier: jwtVerifier},
 		{name: "nil verifier", decrypter: validDecrypter},
@@ -159,8 +159,8 @@ func TestNewNestedVerifierRejectsInvalidConfiguration(t *testing.T) {
 }
 
 func TestNestedIssuerAndVerifierZeroValues(t *testing.T) {
-	claims := &nestedTestClaims{RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	claims := &nestedTestClaims{RegisteredClaims: gojwt.RegisteredClaims{
+		ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}}
 
 	var nilIssuer *NestedIssuer
@@ -186,8 +186,8 @@ func TestNestedVerifierRequiresAuthenticatedJWTContentType(t *testing.T) {
 	verifier, err := NewNestedVerifier(decrypter, jwtVerifier)
 	requireNoError(t, err)
 
-	claims := &nestedTestClaims{RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	claims := &nestedTestClaims{RegisteredClaims: gojwt.RegisteredClaims{
+		ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}}
 	signed, err := jwtSigner.Sign(testContext(), claims)
 	requireNoError(t, err)
@@ -207,14 +207,14 @@ func TestNestedVerifierRejectsInvalidOuterAndInnerTokens(t *testing.T) {
 	verifier, err := NewNestedVerifier(jweDecrypter, wrongJWTVerifier)
 	requireNoError(t, err)
 
-	claims := &nestedTestClaims{RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	claims := &nestedTestClaims{RegisteredClaims: gojwt.RegisteredClaims{
+		ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}}
 	raw, err := issuer.Issue(testContext(), claims)
 	requireNoError(t, err)
 
 	_, err = verifier.VerifyToken(testContext(), raw, &nestedTestClaims{})
-	requireErrorIs(t, err, xjwt.ErrInvalidSignature)
+	requireErrorIs(t, err, jwt.ErrInvalidSignature)
 
 	tampered := tamperCompactPart(t, raw, 4)
 	_, err = verifier.VerifyToken(testContext(), tampered, &nestedTestClaims{})
@@ -230,15 +230,15 @@ func TestNestedContextAndClaimsErrorsPropagate(t *testing.T) {
 	requireNoError(t, err)
 
 	_, err = issuer.Issue(nil, &nestedTestClaims{})
-	requireErrorIs(t, err, xjwt.ErrInvalidConfig)
+	requireErrorIs(t, err, jwt.ErrInvalidConfig)
 
-	claims := &nestedTestClaims{RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	claims := &nestedTestClaims{RegisteredClaims: gojwt.RegisteredClaims{
+		ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}}
 	raw, err := issuer.Issue(testContext(), claims)
 	requireNoError(t, err)
 	_, err = verifier.VerifyToken(testContext(), raw, nil)
-	requireErrorIs(t, err, xjwt.ErrInvalidClaims)
+	requireErrorIs(t, err, jwt.ErrInvalidClaims)
 }
 
 func TestNestedIssuerPropagatesSigningAndEncryptionFailures(t *testing.T) {
@@ -253,7 +253,7 @@ func TestNestedIssuerPropagatesSigningAndEncryptionFailures(t *testing.T) {
 	issuer, err := NewNestedIssuer(jwtSigner, validEncrypter)
 	requireNoError(t, err)
 	_, err = issuer.Issue(testContext(), nil)
-	requireErrorIs(t, err, xjwt.ErrInvalidClaims)
+	requireErrorIs(t, err, jwt.ErrInvalidClaims)
 
 	limitedEncrypter := newDirectEncrypter(
 		t,
@@ -263,8 +263,8 @@ func TestNestedIssuerPropagatesSigningAndEncryptionFailures(t *testing.T) {
 	)
 	issuer, err = NewNestedIssuer(jwtSigner, limitedEncrypter)
 	requireNoError(t, err)
-	claims := &nestedTestClaims{RegisteredClaims: jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	claims := &nestedTestClaims{RegisteredClaims: gojwt.RegisteredClaims{
+		ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 	}}
 	_, err = issuer.Issue(testContext(), claims)
 	requireErrorIs(t, err, ErrPlaintextTooLarge)

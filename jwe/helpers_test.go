@@ -77,14 +77,6 @@ func requireBytesEqual(t *testing.T, got, want []byte) {
 	}
 }
 
-func requireStringEqual(t *testing.T, got, want string) {
-	t.Helper()
-
-	if got != want {
-		t.Fatalf("string = %q, want %q", got, want)
-	}
-}
-
 func compactParts(t *testing.T, raw string) []string {
 	t.Helper()
 
@@ -94,28 +86,6 @@ func compactParts(t *testing.T, raw string) []string {
 	}
 
 	return parts
-}
-
-func rewriteCompactProtected(
-	t *testing.T,
-	raw string,
-	mutate func(map[string]any),
-) string {
-	t.Helper()
-
-	parts := compactParts(t, raw)
-	protected, err := base64.RawURLEncoding.DecodeString(parts[0])
-	requireNoError(t, err)
-
-	var header map[string]any
-	requireNoError(t, json.Unmarshal(protected, &header))
-	mutate(header)
-
-	protected, err = json.Marshal(header)
-	requireNoError(t, err)
-	parts[0] = base64.RawURLEncoding.EncodeToString(protected)
-
-	return strings.Join(parts, ".")
 }
 
 func tamperCompactPart(t *testing.T, raw string, part int) string {
@@ -255,4 +225,21 @@ func newMultiRSAAndSymmetricEncrypter(
 	requireNoError(t, err)
 
 	return encrypter
+}
+
+func requireType[T any](t *testing.T, value any) T {
+	t.Helper()
+
+	typed, ok := value.(T)
+	if !ok {
+		var expected T
+
+		t.Fatalf(
+			"value has type %T, want %T",
+			value,
+			expected,
+		)
+	}
+
+	return typed
 }

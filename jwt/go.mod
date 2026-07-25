@@ -1,4 +1,4 @@
-module github.com/mkbeh/xjwt
+module github.com/mkbeh/xjose/jwt
 
 go 1.26
 

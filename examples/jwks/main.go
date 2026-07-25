@@ -9,9 +9,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
-	"github.com/mkbeh/xjwt/jwks"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwks"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 type AccessClaims struct {
 	UserID string `json:"user_id"`
 
-	jwt.RegisteredClaims
+	gojwt.RegisteredClaims
 }
 
 func main() {
@@ -38,25 +38,25 @@ func main() {
 	previousPrivateKey := generateRSAKey("previous")
 	currentPrivateKey := generateRSAKey("current")
 
-	previousVerificationKey, err := xjwt.NewVerificationKey(
+	previousVerificationKey, err := jwt.NewVerificationKey(
 		previousKeyID,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		&previousPrivateKey.PublicKey,
 	)
 	if err != nil {
 		log.Fatalf("create previous verification key: %v", err)
 	}
 
-	currentSigningKey, err := xjwt.NewSigningKey(
+	currentSigningKey, err := jwt.NewSigningKey(
 		currentKeyID,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		currentPrivateKey,
 	)
 	if err != nil {
 		log.Fatalf("create current signing key: %v", err)
 	}
 
-	verificationKeySet, err := xjwt.NewStaticKeySet(
+	verificationKeySet, err := jwt.NewStaticKeySet(
 		previousVerificationKey,
 		currentSigningKey.VerificationKey(),
 	)
@@ -80,22 +80,22 @@ func main() {
 		log.Fatalf("parse JWKS: %v", err)
 	}
 
-	signer, err := xjwt.NewSigner(
+	signer, err := jwt.NewSigner(
 		currentSigningKey,
-		xjwt.WithType(tokenType),
+		jwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create signer: %v", err)
 	}
 
-	verifier, err := xjwt.NewVerifier(
+	verifier, err := jwt.NewVerifier(
 		parsedKeySet,
-		xjwt.WithMethods(jwt.SigningMethodPS256),
-		xjwt.WithIssuer(issuer),
-		xjwt.WithAudience(audience),
-		xjwt.WithType(tokenType),
-		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(tokenLifetime),
+		jwt.WithMethods(gojwt.SigningMethodPS256),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(audience),
+		jwt.WithType(tokenType),
+		jwt.RequireIssuedAt(),
+		jwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create verifier: %v", err)
@@ -107,12 +107,12 @@ func main() {
 		ctx,
 		&AccessClaims{
 			UserID: "user-123",
-			RegisteredClaims: jwt.RegisteredClaims{
+			RegisteredClaims: gojwt.RegisteredClaims{
 				Issuer:    issuer,
 				Subject:   "user-123",
-				Audience:  jwt.ClaimStrings{audience},
-				ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
-				IssuedAt:  jwt.NewNumericDate(now),
+				Audience:  gojwt.ClaimStrings{audience},
+				ExpiresAt: gojwt.NewNumericDate(now.Add(tokenLifetime)),
+				IssuedAt:  gojwt.NewNumericDate(now),
 				ID:        "token-123",
 			},
 		},

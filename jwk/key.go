@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const keyUseSignature = "sig"
@@ -19,12 +19,12 @@ type Key = jose.JSONWebKey
 // FromVerificationKey converts verification key to a public JWK.
 //
 // Symmetric verification keys cannot be represented as public JWKs.
-func FromVerificationKey(key xjwt.VerificationKey) (Key, error) {
+func FromVerificationKey(key jwt.VerificationKey) (Key, error) {
 	method := key.Method()
 	if method == nil {
 		return Key{}, fmt.Errorf(
 			"%w: verification key is uninitialized",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
@@ -32,14 +32,14 @@ func FromVerificationKey(key xjwt.VerificationKey) (Key, error) {
 	if raw == nil {
 		return Key{}, fmt.Errorf(
 			"%w: verification key is uninitialized",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
 	if _, symmetric := raw.([]byte); symmetric {
 		return Key{}, fmt.Errorf(
 			"%w: symmetric keys cannot be exported as public JWKs",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
@@ -64,7 +64,7 @@ func Parse(data []byte) (Key, error) {
 	if err := json.Unmarshal(data, &key); err != nil {
 		return Key{}, fmt.Errorf(
 			"%w: parse JWK: %w",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 			err,
 		)
 	}
@@ -77,31 +77,31 @@ func Parse(data []byte) (Key, error) {
 }
 
 // ToVerificationKey converts a public JWK to verification key.
-func ToVerificationKey(key Key, method jwt.SigningMethod) (xjwt.VerificationKey, error) {
+func ToVerificationKey(key Key, method gojwt.SigningMethod) (jwt.VerificationKey, error) {
 	if method == nil {
-		return xjwt.VerificationKey{}, fmt.Errorf(
+		return jwt.VerificationKey{}, fmt.Errorf(
 			"%w: signing method is nil",
-			xjwt.ErrInvalidConfig,
+			jwt.ErrInvalidConfig,
 		)
 	}
 
 	if err := validatePublicKey(key); err != nil {
-		return xjwt.VerificationKey{}, err
+		return jwt.VerificationKey{}, err
 	}
 
 	if key.Use != "" && key.Use != keyUseSignature {
-		return xjwt.VerificationKey{}, fmt.Errorf(
+		return jwt.VerificationKey{}, fmt.Errorf(
 			"%w: JWK use %q does not permit signature verification",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 			key.Use,
 		)
 	}
 
 	if key.Algorithm != "" && key.Algorithm != method.Alg() {
-		return xjwt.VerificationKey{}, xjwt.ErrUnexpectedAlgorithm
+		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
 	}
 
-	return xjwt.NewVerificationKey(
+	return jwt.NewVerificationKey(
 		key.KeyID,
 		method,
 		key.Key,
@@ -118,7 +118,7 @@ func ThumbprintID(key Key) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf(
 			"%w: calculate JWK thumbprint: %w",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 			err,
 		)
 	}
@@ -130,7 +130,7 @@ func validatePublicKey(key Key) error {
 	if !key.Valid() || !key.IsPublic() {
 		return fmt.Errorf(
 			"%w: JWK must contain a valid public key",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 

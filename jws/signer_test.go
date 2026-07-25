@@ -14,8 +14,6 @@ func TestSignerRoundTrip(t *testing.T) {
 	payload := []byte(`{"document_id":"document-123","status":"approved"}`)
 
 	for _, fixture := range testSigningFixtures(t) {
-		fixture := fixture
-
 		t.Run(fixture.name, func(t *testing.T) {
 			signer, err := NewSigner(
 				SigningKey{
@@ -62,6 +60,7 @@ func TestSignerRoundTrip(t *testing.T) {
 		})
 	}
 }
+
 func TestSignerDetachedRoundTrip(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x21}, 32)
 	payload := []byte("exact document bytes\n")
@@ -98,6 +97,7 @@ func TestSignerDetachedRoundTrip(t *testing.T) {
 	)
 	requireErrorIs(t, err, ErrVerify)
 }
+
 func TestSignerValidatesReceiverAndPayload(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x33}, 32)
 
@@ -126,6 +126,7 @@ func TestSignerValidatesReceiverAndPayload(t *testing.T) {
 	_, err = smallTokenSigner.Sign([]byte("a"))
 	requireErrorIs(t, err, ErrTokenTooLarge)
 }
+
 func TestSignerUsesKeySnapshot(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x44}, 32)
 	original := bytes.Clone(secret)
@@ -146,6 +147,7 @@ func TestSignerUsesKeySnapshot(t *testing.T) {
 	_, err = wrongVerifier.VerifyMessage(context.Background(), raw)
 	requireErrorIs(t, err, ErrVerify)
 }
+
 func TestSignerWithHeaderSetsProtectedKeyID(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x55}, 32)
 
@@ -164,6 +166,7 @@ func TestSignerWithHeaderSetsProtectedKeyID(t *testing.T) {
 		t.Fatalf("protected kid = %q, want %q", got, "signing-key")
 	}
 }
+
 func TestSignerOpaqueSigner(t *testing.T) {
 	opaque := newOpaqueEdSigner(t, "opaque-1")
 
@@ -197,8 +200,8 @@ func TestSignerOpaqueSigner(t *testing.T) {
 	if verified.Header.KeyID != "opaque-2" {
 		t.Fatalf("second kid = %q, want %q", verified.Header.KeyID, "opaque-2")
 	}
-
 }
+
 func TestSignerConcurrentUse(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x66}, 32)
 	signer := newHMACSigner(t, secret, "concurrent")
@@ -210,7 +213,6 @@ func TestSignerConcurrentUse(t *testing.T) {
 	errorsChannel := make(chan error, workers)
 
 	for worker := 0; worker < workers; worker++ {
-		worker := worker
 		wait.Add(1)
 
 		go func() {
@@ -242,6 +244,7 @@ func TestSignerConcurrentUse(t *testing.T) {
 		t.Errorf("concurrent sign/verify: %v", err)
 	}
 }
+
 func TestSignerInteroperatesWithGoJose(t *testing.T) {
 	secret := bytes.Repeat([]byte{0xb1}, 32)
 	payload := []byte("interoperability payload")

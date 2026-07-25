@@ -458,9 +458,10 @@ func TestMultiDecrypterMergesUnprotectedHeaders(t *testing.T) {
 
 	raw = rewriteJSONObject(t, raw, func(object map[string]any) {
 		object["unprotected"] = map[string]any{"route": "shared"}
-		recipients := object["recipients"].([]any)
-		second := recipients[1].(map[string]any)
-		header := second["header"].(map[string]any)
+
+		recipients := requireType[[]any](t, object["recipients"])
+		second := requireType[map[string]any](t, recipients[1])
+		header := requireType[map[string]any](t, second["header"])
 		header["role"] = "billing"
 	})
 
@@ -651,9 +652,9 @@ func TestMultiDecrypterRejectsPerRecipientCriticalHeader(t *testing.T) {
 	raw, err := newMultiRSAAndSymmetricEncrypter(t, key).Encrypt([]byte("payload"))
 	requireNoError(t, err)
 	raw = rewriteJSONObject(t, raw, func(object map[string]any) {
-		recipients := object["recipients"].([]any)
-		second := recipients[1].(map[string]any)
-		header := second["header"].(map[string]any)
+		recipients := requireType[[]any](t, object["recipients"])
+		second := requireType[map[string]any](t, recipients[1])
+		header := requireType[map[string]any](t, second["header"])
 		header["crit"] = []any{"role"}
 		header["role"] = "billing"
 	})

@@ -6,8 +6,6 @@ vars:
     sh: go env GOMODCACHE
   GOCACHE:
     sh: go env GOCACHE
-  PWD_DIR:
-    sh: pwd
 
   BENCH_GOMAXPROCS: "1"
   BENCH_PATTERN: "^Benchmark"
@@ -19,33 +17,125 @@ env:
 
 tasks:
   run:
-    desc: "Full cycle"
+    desc: "Run lint and tests for all modules"
     cmds:
-      - task: vendor-root
-      - task: lint-root
-      - task: test-root
+      - task: lint
+      - task: test
 
   before-commit:
-    desc: "Tidy example modules and run all checks"
+    desc: "Tidy modules and examples, then run all checks"
     cmds:
+      - task: tidy
       - task: tidy-examples
       - task: check-examples
       - task: run
 
-  lint:
-    desc: "Lint root module"
+  tidy:
+    desc: "Tidy all module dependencies"
     cmds:
-      - task: vendor-root
-      - task: lint-root
+      - task: _tidy-module
+        vars:
+          WORK_DIR: ./jwt
+      - task: _tidy-module
+        vars:
+          WORK_DIR: ./jws
+      - task: _tidy-module
+        vars:
+          WORK_DIR: ./jwe
+      - task: _tidy-module
+        vars:
+          WORK_DIR: ./jwk
+      - task: _tidy-module
+        vars:
+          WORK_DIR: ./jwks
+
+  lint:
+    desc: "Lint all modules"
+    cmds:
+      - task: lint-jwt
+      - task: lint-jws
+      - task: lint-jwe
+      - task: lint-jwk
+      - task: lint-jwks
+
+  lint-jwt:
+    desc: "Lint JWT module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwt
+
+  lint-jws:
+    desc: "Lint JWS module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jws
+
+  lint-jwe:
+    desc: "Lint JWE module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwe
+
+  lint-jwk:
+    desc: "Lint JWK module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwk
+
+  lint-jwks:
+    desc: "Lint JWKS module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwks
 
   test:
-    desc: "Run all tests"
+    desc: "Test all modules"
     cmds:
-      - task: vendor-root
-      - task: test-root
+      - task: test-jwt
+      - task: test-jws
       - task: test-jwe
       - task: test-jwk
       - task: test-jwks
+
+  test-jwt:
+    desc: "Test JWT module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwt
+
+  test-jws:
+    desc: "Test JWS module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jws
+
+  test-jwe:
+    desc: "Test JWE module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwe
+
+  test-jwk:
+    desc: "Test JWK module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwk
+
+  test-jwks:
+    desc: "Test JWKS module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwks
 
   tidy-examples:
     desc: "Tidy example module dependencies"
@@ -71,7 +161,7 @@ tasks:
       - |
         set -euo pipefail
 
-        root="$(pwd)"
+        root="{{.ROOT_DIR}}"
 
         find ./examples -name go.mod -print |
         sort |
@@ -85,75 +175,61 @@ tasks:
 
             (
               cd "$workspace"
-              GOWORK=off go work init "$root" "$root/${dir#./}"
+              GOWORK=off go work init \
+                "$root/jwt" \
+                "$root/jws" \
+                "$root/jwe" \
+                "$root/jwk" \
+                "$root/jwks" \
+                "$root/${dir#./}"
             )
 
-            cd "$dir"
+            cd "$root/${dir#./}"
             GOWORK="$workspace/go.work" go mod verify
             GOWORK="$workspace/go.work" go vet ./...
             GOWORK="$workspace/go.work" go test -race -count=1 ./...
           )
         done
 
-  vendor-root:
-    desc: "Vendor root module"
-    cmds:
-      - rm -rf vendor
-      - go mod tidy -v
-      - go mod vendor
-
-  lint-root:
-    desc: "Lint root module"
-    cmds:
-      - task: _run-linter
-        vars:
-          WORK_DIR: /app
-
-  test-root:
-    desc: "Test root module"
-    env:
-      GOWORK: "off"
-    cmds:
-      - go test -mod=vendor -race -v -count=1 ./...
-
-  test-jwe:
-    desc: "Test JWE module"
-    cmds:
-      - task: _run-module-tests
-        vars:
-          WORK_DIR: ./jwe
-
-  test-jwk:
-    desc: "Test JWK module"
-    cmds:
-      - task: _run-module-tests
-        vars:
-          WORK_DIR: ./jwk
-
-  test-jwks:
-    desc: "Test JWKS module"
-    cmds:
-      - task: _run-module-tests
-        vars:
-          WORK_DIR: ./jwks
-
-  test-jws:
-    desc: "Test JWS module"
-    cmds:
-      - task: _run-module-tests
-        vars:
-          WORK_DIR: ./jws
-
   coverage:
-    desc: Run tests and print total coverage
+    desc: "Run tests and print total coverage for all modules"
     cmds:
-      - go test -tags=integration -count=1 -covermode=atomic -coverprofile=coverage.out ./...
-      - go tool cover -func=coverage.out | grep total
+      - |
+        set -euo pipefail
+
+        root="{{.ROOT_DIR}}"
+        output="$root/coverage.out"
+        profiles="$(mktemp -d)"
+        trap 'rm -rf "$profiles"' EXIT
+
+        printf 'mode: atomic\n' > "$output"
+
+        for module in jwt jws jwe jwk jwks; do
+          echo "==> $module"
+          profile="$profiles/$module.out"
+
+          (
+            cd "$root/$module"
+            GOWORK="$root/go.work" go test \
+              -tags=integration \
+              -count=1 \
+              -covermode=atomic \
+              -coverprofile="$profile" \
+              ./...
+          )
+
+          tail -n +2 "$profile" >> "$output"
+        done
+
+        GOWORK="$root/go.work" go tool cover -func="$output" | grep total
 
   coverage:html:
-    desc: Generate HTML coverage report
+    desc: "Generate HTML coverage report"
     deps:
       - coverage
+    dir: "{{.ROOT_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
     cmds:
       - go tool cover -html=coverage.out -o coverage.html
 
@@ -162,17 +238,17 @@ tasks:
     aliases:
       - bench
     cmds:
-      - task: benchmark:root
+      - task: benchmark:jwt
       - task: benchmark:jwe
 
-  benchmark:root:
-    desc: "Run root module benchmarks"
+  benchmark:jwt:
+    desc: "Run JWT benchmarks"
     aliases:
-      - bench:root
+      - bench:jwt
     cmds:
       - task: _run-benchmarks
         vars:
-          WORK_DIR: .
+          WORK_DIR: ./jwt
 
   benchmark:jwe:
     desc: "Run JWE benchmarks"
@@ -183,22 +259,46 @@ tasks:
         vars:
           WORK_DIR: ./jwe
 
+  benchmark:jws:
+    desc: "Run JWS benchmarks"
+    aliases:
+      - bench:jws
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: ./jws
+
+  _tidy-module:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    dir: "{{.WORK_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
+    cmds:
+      - go mod tidy -v
+
   _run-linter:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
     desc: "Run golangci-lint in Docker"
     cmds:
       - >
         docker run --rm
         -u $(id -u):$(id -g)
-        -v {{.PWD_DIR}}:/app
+        -v {{.ROOT_DIR}}:/app
         -v {{.GOMODCACHE}}:/go/pkg/mod
         -v {{.GOCACHE}}:/go/build-cache
         -e GOMODCACHE=/go/pkg/mod
         -e GOCACHE=/go/build-cache
         -e GOLANGCI_LINT_CACHE=/go/build-cache/golangci-lint
-        -e GOWORK=off
+        -e GOWORK=/app/go.work
         -w {{.WORK_DIR}}
         golangci/golangci-lint:{{.LINTER_VER}}
-        golangci-lint run --timeout 5m --fix --modules-download-mode vendor
+        golangci-lint run --timeout 5m --fix --modules-download-mode readonly
 
   _run-benchmarks:
     internal: true

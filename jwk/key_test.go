@@ -16,14 +16,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 func TestFromVerificationKey(t *testing.T) {
 	for _, testCase := range asymmetricKeyFixtures(t) {
 		t.Run(testCase.name, func(t *testing.T) {
-			verificationKey, err := xjwt.NewVerificationKey(
+			verificationKey, err := jwt.NewVerificationKey(
 				testCase.keyID,
 				testCase.method,
 				testCase.publicKey,
@@ -69,20 +69,20 @@ func TestFromVerificationKey(t *testing.T) {
 
 func TestFromVerificationKeyRejectsInvalidKeys(t *testing.T) {
 	t.Run("uninitialized", func(t *testing.T) {
-		_, err := FromVerificationKey(xjwt.VerificationKey{})
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		_, err := FromVerificationKey(jwt.VerificationKey{})
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 
 	t.Run("symmetric", func(t *testing.T) {
-		verificationKey, err := xjwt.NewVerificationKey(
+		verificationKey, err := jwt.NewVerificationKey(
 			"hmac-2026-07",
-			jwt.SigningMethodHS256,
+			gojwt.SigningMethodHS256,
 			bytes.Repeat([]byte{0x42}, 32),
 		)
 		requireNoError(t, err)
 
 		_, err = FromVerificationKey(verificationKey)
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 }
 
@@ -139,7 +139,7 @@ func TestParseRejectsInvalidKeys(t *testing.T) {
 	symmetricData, err := json.Marshal(Key{
 		Key:       bytes.Repeat([]byte{0x33}, 32),
 		KeyID:     "symmetric",
-		Algorithm: jwt.SigningMethodHS256.Alg(),
+		Algorithm: gojwt.SigningMethodHS256.Alg(),
 		Use:       keyUseSignature,
 	})
 	requireNoError(t, err)
@@ -162,7 +162,7 @@ func TestParseRejectsInvalidKeys(t *testing.T) {
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			_, err := Parse(testCase.data)
-			requireErrorIs(t, err, xjwt.ErrInvalidKey)
+			requireErrorIs(t, err, jwt.ErrInvalidKey)
 		})
 	}
 }
@@ -233,12 +233,12 @@ func TestToVerificationKeyRejectsInvalidConfiguration(t *testing.T) {
 
 	t.Run("nil method", func(t *testing.T) {
 		_, err := ToVerificationKey(validKey, nil)
-		requireErrorIs(t, err, xjwt.ErrInvalidConfig)
+		requireErrorIs(t, err, jwt.ErrInvalidConfig)
 	})
 
 	t.Run("invalid key", func(t *testing.T) {
 		_, err := ToVerificationKey(Key{}, fixture.method)
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 
 	t.Run("private key", func(t *testing.T) {
@@ -246,7 +246,7 @@ func TestToVerificationKeyRejectsInvalidConfiguration(t *testing.T) {
 			Key{Key: fixture.privateKey},
 			fixture.method,
 		)
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 
 	t.Run("encryption use", func(t *testing.T) {
@@ -254,15 +254,15 @@ func TestToVerificationKeyRejectsInvalidConfiguration(t *testing.T) {
 		key.Use = "enc"
 
 		_, err := ToVerificationKey(key, fixture.method)
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 
 	t.Run("unexpected algorithm", func(t *testing.T) {
 		key := validKey
-		key.Algorithm = jwt.SigningMethodRS256.Alg()
+		key.Algorithm = gojwt.SigningMethodRS256.Alg()
 
 		_, err := ToVerificationKey(key, fixture.method)
-		requireErrorIs(t, err, xjwt.ErrUnexpectedAlgorithm)
+		requireErrorIs(t, err, jwt.ErrUnexpectedAlgorithm)
 	})
 }
 
@@ -337,7 +337,7 @@ func TestThumbprintIDRejectsInvalidKeys(t *testing.T) {
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
 			_, err := ThumbprintID(testCase.key)
-			requireErrorIs(t, err, xjwt.ErrInvalidKey)
+			requireErrorIs(t, err, jwt.ErrInvalidKey)
 		})
 	}
 }
@@ -345,7 +345,7 @@ func TestThumbprintIDRejectsInvalidKeys(t *testing.T) {
 func TestJWTVerificationRoundTrip(t *testing.T) {
 	for _, testCase := range asymmetricKeyFixtures(t) {
 		t.Run(testCase.name, func(t *testing.T) {
-			signingKey, err := xjwt.NewSigningKey(
+			signingKey, err := jwt.NewSigningKey(
 				testCase.keyID,
 				testCase.method,
 				testCase.privateKey,
@@ -364,27 +364,27 @@ func TestJWTVerificationRoundTrip(t *testing.T) {
 			verificationKey, err := ToVerificationKey(parsed, testCase.method)
 			requireNoError(t, err)
 
-			signer, err := xjwt.NewSigner(signingKey)
+			signer, err := jwt.NewSigner(signingKey)
 			requireNoError(t, err)
 
 			issuedAt := time.Now().UTC().Truncate(time.Second)
 			token, err := signer.Sign(
 				context.Background(),
-				jwt.RegisteredClaims{
+				gojwt.RegisteredClaims{
 					Subject:   "user-123",
-					IssuedAt:  jwt.NewNumericDate(issuedAt),
-					ExpiresAt: jwt.NewNumericDate(issuedAt.Add(time.Hour)),
+					IssuedAt:  gojwt.NewNumericDate(issuedAt),
+					ExpiresAt: gojwt.NewNumericDate(issuedAt.Add(time.Hour)),
 				},
 			)
 			requireNoError(t, err)
 
-			verifier, err := xjwt.NewVerifier(
+			verifier, err := jwt.NewVerifier(
 				verificationKey,
-				xjwt.WithMethods(testCase.method),
+				jwt.WithMethods(testCase.method),
 			)
 			requireNoError(t, err)
 
-			var claims jwt.RegisteredClaims
+			var claims gojwt.RegisteredClaims
 			err = verifier.Verify(context.Background(), token, &claims)
 			requireNoError(t, err)
 
@@ -398,7 +398,7 @@ func TestJWTVerificationRoundTrip(t *testing.T) {
 type asymmetricKeyFixture struct {
 	name       string
 	keyID      string
-	method     jwt.SigningMethod
+	method     gojwt.SigningMethod
 	privateKey any
 	publicKey  any
 }
@@ -435,21 +435,21 @@ func asymmetricKeyFixtures(t testing.TB) []asymmetricKeyFixture {
 			{
 				name:       "RSA",
 				keyID:      "rsa-2026-07",
-				method:     jwt.SigningMethodPS256,
+				method:     gojwt.SigningMethodPS256,
 				privateKey: rsaPrivateKey,
 				publicKey:  &rsaPrivateKey.PublicKey,
 			},
 			{
 				name:       "ECDSA",
 				keyID:      "ecdsa-2026-07",
-				method:     jwt.SigningMethodES256,
+				method:     gojwt.SigningMethodES256,
 				privateKey: ecdsaPrivateKey,
 				publicKey:  &ecdsaPrivateKey.PublicKey,
 			},
 			{
 				name:       "Ed25519",
 				keyID:      "ed25519-2026-07",
-				method:     jwt.SigningMethodEdDSA,
+				method:     gojwt.SigningMethodEdDSA,
 				privateKey: ed25519PrivateKey,
 				publicKey:  ed25519PublicKey,
 			},

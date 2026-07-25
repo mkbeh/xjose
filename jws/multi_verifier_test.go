@@ -3,11 +3,10 @@ package jws
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"errors"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func TestMultiVerifierPolicies(t *testing.T) {
@@ -33,8 +32,7 @@ func TestMultiVerifierPolicies(t *testing.T) {
 			resolver: newMapResolver(map[string]trustedKey{
 				"approval": {
 					algorithm: jose.EdDSA,
-					key: fixture.keys[1].Key.(ed25519.PrivateKey).
-						Public().(ed25519.PublicKey),
+					key:       fixture.approvalPublicKey,
 				},
 			}),
 			wantValid:  1,
@@ -59,8 +57,7 @@ func TestMultiVerifierPolicies(t *testing.T) {
 			resolver: newMapResolver(map[string]trustedKey{
 				"approval": {
 					algorithm: jose.EdDSA,
-					key: fixture.keys[1].Key.(ed25519.PrivateKey).
-						Public().(ed25519.PublicKey),
+					key:       fixture.approvalPublicKey,
 				},
 			}),
 			policy:     RequireThreshold(1, "issuer", "approval"),
@@ -80,8 +77,6 @@ func TestMultiVerifierPolicies(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
-
 		t.Run(test.name, func(t *testing.T) {
 			options := []Option{
 				WithType(testType),
@@ -122,6 +117,7 @@ func TestMultiVerifierPolicies(t *testing.T) {
 		})
 	}
 }
+
 func TestMultiVerifierContinuesAfterInvalidSignature(t *testing.T) {
 	fixture := newMultiFixture(t)
 	raw := signMultiFixture(t, fixture, []byte("payload"))
@@ -158,6 +154,7 @@ func TestMultiVerifierContinuesAfterInvalidSignature(t *testing.T) {
 	requireErrorIs(t, err, ErrVerificationPolicy)
 	requireErrorIs(t, err, ErrVerify)
 }
+
 func TestMultiVerifierDistinguishesMissingKeysAndResolverFailures(t *testing.T) {
 	fixture := newMultiFixture(t)
 	raw := signMultiFixture(t, fixture, []byte("payload"))
@@ -207,6 +204,7 @@ func TestMultiVerifierDistinguishesMissingKeysAndResolverFailures(t *testing.T) 
 	_, err = verifier.VerifyMessage(context.Background(), raw)
 	requireErrorIs(t, err, ErrVerify)
 }
+
 func TestMultiVerifierValidatesInput(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x84}, 32)
 

@@ -3,5 +3,5 @@ module jwt_hmac
 go 1.26
 
 require (
-	github.com/mkbeh/xjwt v0.2.0
+	github.com/mkbeh/xjose/jwt v0.2.0
 )

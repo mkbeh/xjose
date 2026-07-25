@@ -1,4 +1,4 @@
-package xjwt
+package jwt
 
 import (
 	"fmt"

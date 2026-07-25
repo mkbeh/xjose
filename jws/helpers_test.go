@@ -22,6 +22,7 @@ import (
 const (
 	testType        = "example+jws"
 	testContentType = "application/json"
+	testRSAKeyBits  = 2048
 )
 
 type signingFixture struct {
@@ -35,7 +36,7 @@ type signingFixture struct {
 func testSigningFixtures(t *testing.T) []signingFixture {
 	t.Helper()
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, testRSAKeyBits)
 	requireNoError(t, err)
 
 	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -307,21 +308,23 @@ func (signer *opaqueEdSigner) setKeyID(keyID string) {
 }
 
 type multiFixture struct {
-	keys       []SigningKey
-	algorithms []jose.SignatureAlgorithm
-	resolver   KeyResolver
+	keys              []SigningKey
+	algorithms        []jose.SignatureAlgorithm
+	resolver          KeyResolver
+	approvalPublicKey ed25519.PublicKey
 }
 
 func newMultiFixture(t *testing.T) multiFixture {
 	t.Helper()
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, testRSAKeyBits)
 	requireNoError(t, err)
 
 	edPublic, edPrivate, err := ed25519.GenerateKey(rand.Reader)
 	requireNoError(t, err)
 
 	return multiFixture{
+		approvalPublicKey: edPublic,
 		keys: []SigningKey{
 			{
 				Algorithm: jose.PS256,

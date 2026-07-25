@@ -154,7 +154,9 @@ func (verifier *MultiVerifier) verify(
 
 	_, stopAfterFirstValid := verifier.config.policy.(requireAnyPolicy)
 
-	for index, signature := range object.Signatures {
+	for index := range object.Signatures {
+		signature := &object.Signatures[index]
+
 		if err := ctx.Err(); err != nil {
 			return MultiVerified{}, err
 		}

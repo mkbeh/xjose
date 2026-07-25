@@ -35,6 +35,7 @@ func TestProtectedHeaderParsing(t *testing.T) {
 		t.Fatalf("custom header = %#v", parsed.ExtraHeaders["custom"])
 	}
 }
+
 func TestProtectedHeaderRejectsMalformedOrUnsupportedValues(t *testing.T) {
 	tests := []jose.Header{
 		{},
@@ -69,6 +70,7 @@ func TestProtectedHeaderRejectsMalformedOrUnsupportedValues(t *testing.T) {
 		}
 	}
 }
+
 func TestUnprotectedHeaderValidation(t *testing.T) {
 	requireNoError(t, validateUnprotectedHeader(jose.Header{
 		ExtraHeaders: map[jose.HeaderKey]any{

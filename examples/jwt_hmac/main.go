@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 type AccessClaims struct {
 	Role string `json:"role"`
 
-	jwt.RegisteredClaims
+	gojwt.RegisteredClaims
 }
 
 func main() {
@@ -34,18 +34,18 @@ func main() {
 		log.Fatalf("generate HMAC secret: %v", err)
 	}
 
-	signingKey, err := xjwt.NewSigningKey(
+	signingKey, err := jwt.NewSigningKey(
 		keyID,
-		jwt.SigningMethodHS256,
+		gojwt.SigningMethodHS256,
 		secret,
 	)
 	if err != nil {
 		log.Fatalf("create signing key: %v", err)
 	}
 
-	signer, err := xjwt.NewSigner(
+	signer, err := jwt.NewSigner(
 		signingKey,
-		xjwt.WithType(tokenType),
+		jwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create signer: %v", err)
@@ -55,12 +55,12 @@ func main() {
 	now := time.Now().UTC()
 	claims := &AccessClaims{
 		Role: "admin",
-		RegisteredClaims: jwt.RegisteredClaims{
+		RegisteredClaims: gojwt.RegisteredClaims{
 			Issuer:    issuer,
 			Subject:   "user-123",
-			Audience:  jwt.ClaimStrings{audience},
-			ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
-			IssuedAt:  jwt.NewNumericDate(now),
+			Audience:  gojwt.ClaimStrings{audience},
+			ExpiresAt: gojwt.NewNumericDate(now.Add(tokenLifetime)),
+			IssuedAt:  gojwt.NewNumericDate(now),
 			ID:        "token-123",
 		},
 	}
@@ -71,14 +71,14 @@ func main() {
 	}
 
 	// Verify the signature and enforce the expected token policy.
-	verifier, err := xjwt.NewVerifier(
+	verifier, err := jwt.NewVerifier(
 		signingKey.VerificationKey(),
-		xjwt.WithMethods(jwt.SigningMethodHS256),
-		xjwt.WithIssuer(issuer),
-		xjwt.WithAudience(audience),
-		xjwt.WithType(tokenType),
-		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(tokenLifetime),
+		jwt.WithMethods(gojwt.SigningMethodHS256),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(audience),
+		jwt.WithType(tokenType),
+		jwt.RequireIssuedAt(),
+		jwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create verifier: %v", err)

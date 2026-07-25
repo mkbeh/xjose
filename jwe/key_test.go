@@ -10,7 +10,7 @@ import (
 func TestCloneKeyMaterial(t *testing.T) {
 	t.Run("byte slice", func(t *testing.T) {
 		original := []byte("secret")
-		cloned := cloneKeyMaterial(original).([]byte)
+		cloned := requireType[[]byte](t, cloneKeyMaterial(original))
 		cloned[0] ^= 0xff
 		if bytes.Equal(original, cloned) {
 			t.Fatal("byte slice shares storage")
@@ -20,8 +20,9 @@ func TestCloneKeyMaterial(t *testing.T) {
 	t.Run("JWK value", func(t *testing.T) {
 		originalKey := []byte("secret")
 		original := jose.JSONWebKey{Key: originalKey, KeyID: "key"}
-		cloned := cloneKeyMaterial(original).(jose.JSONWebKey)
-		cloned.Key.([]byte)[0] ^= 0xff
+		cloned := requireType[jose.JSONWebKey](t, cloneKeyMaterial(original))
+		clonedKey := requireType[[]byte](t, cloned.Key)
+		clonedKey[0] ^= 0xff
 		if !bytes.Equal(originalKey, []byte("secret")) {
 			t.Fatal("JWK key material shares storage")
 		}
@@ -30,11 +31,13 @@ func TestCloneKeyMaterial(t *testing.T) {
 	t.Run("JWK pointer", func(t *testing.T) {
 		originalKey := []byte("secret")
 		original := &jose.JSONWebKey{Key: originalKey, KeyID: "key"}
-		cloned := cloneKeyMaterial(original).(*jose.JSONWebKey)
+		cloned := requireType[*jose.JSONWebKey](t, cloneKeyMaterial(original))
 		if cloned == original {
 			t.Fatal("JWK pointer was not cloned")
 		}
-		cloned.Key.([]byte)[0] ^= 0xff
+
+		clonedKey := requireType[[]byte](t, cloned.Key)
+		clonedKey[0] ^= 0xff
 		if !bytes.Equal(originalKey, []byte("secret")) {
 			t.Fatal("JWK key material shares storage")
 		}
@@ -42,8 +45,8 @@ func TestCloneKeyMaterial(t *testing.T) {
 
 	t.Run("nil JWK pointer", func(t *testing.T) {
 		var original *jose.JSONWebKey
-		if cloneKeyMaterial(original) != original {
-			t.Fatal("nil JWK pointer changed")
+		if cloneKeyMaterial(original) != nil {
+			t.Fatal("nil JWK pointer was not normalized to nil")
 		}
 	})
 
@@ -67,7 +70,8 @@ func TestCloneRecipients(t *testing.T) {
 	}}
 
 	cloned := cloneRecipients(original)
-	cloned[0].Key.([]byte)[0] ^= 0xff
+	clonedKey := requireType[[]byte](t, cloned[0].Key)
+	clonedKey[0] ^= 0xff
 	cloned[0].PBES2Salt[0] ^= 0xff
 	cloned[0].KeyID = "changed"
 

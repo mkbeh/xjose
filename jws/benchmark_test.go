@@ -37,12 +37,9 @@ type benchmarkSigningFixture struct {
 
 func BenchmarkSignerSign(b *testing.B) {
 	for _, fixture := range benchmarkSigningFixtures(b) {
-		fixture := fixture
 		signer := benchmarkSigner(b, fixture)
 
 		for _, size := range benchmarkPayloadSizes() {
-			size := size
-
 			b.Run(fmt.Sprintf("%s/%s", fixture.name, size.name), func(b *testing.B) {
 				payload := benchmarkBytes(size.bytes, 0x21)
 
@@ -70,7 +67,6 @@ func BenchmarkSignerSignDetached(b *testing.B) {
 	payload := benchmarkBytes(1<<10, 0x31)
 
 	for _, fixture := range benchmarkSigningFixtures(b) {
-		fixture := fixture
 		signer := benchmarkSigner(b, fixture)
 
 		b.Run(fixture.name, func(b *testing.B) {
@@ -97,13 +93,10 @@ func BenchmarkVerifierVerifyMessage(b *testing.B) {
 	ctx := context.Background()
 
 	for _, fixture := range benchmarkSigningFixtures(b) {
-		fixture := fixture
 		signer := benchmarkSigner(b, fixture)
 		verifier := benchmarkVerifier(b, fixture)
 
 		for _, size := range benchmarkPayloadSizes() {
-			size := size
-
 			b.Run(fmt.Sprintf("%s/%s", fixture.name, size.name), func(b *testing.B) {
 				payload := benchmarkBytes(size.bytes, 0x41)
 				raw, err := signer.Sign(payload)
@@ -136,7 +129,6 @@ func BenchmarkVerifierVerifyDetached(b *testing.B) {
 	payload := benchmarkBytes(1<<10, 0x61)
 
 	for _, fixture := range benchmarkSigningFixtures(b) {
-		fixture := fixture
 		signer := benchmarkSigner(b, fixture)
 		verifier := benchmarkVerifier(b, fixture)
 
@@ -169,8 +161,6 @@ func BenchmarkMultiSignerSign(b *testing.B) {
 	payload := benchmarkBytes(1<<10, 0x71)
 
 	for _, signatureCount := range []int{1, 2, 4, 8} {
-		signatureCount := signatureCount
-
 		b.Run(fmt.Sprintf("Signatures=%d", signatureCount), func(b *testing.B) {
 			keys, _ := benchmarkMultiSigningKeys(signatureCount)
 
@@ -216,12 +206,8 @@ func BenchmarkMultiVerifierVerifyMessage(b *testing.B) {
 	}
 
 	for _, policy := range policies {
-		policy := policy
-
 		b.Run(policy.name, func(b *testing.B) {
 			for _, signatureCount := range []int{1, 2, 4, 8} {
-				signatureCount := signatureCount
-
 				b.Run(fmt.Sprintf("Signatures=%d", signatureCount), func(b *testing.B) {
 					keys, secret := benchmarkMultiSigningKeys(signatureCount)
 

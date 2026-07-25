@@ -25,6 +25,7 @@ func TestVerifierRejectsInvalidSignatureAndReturnsNilPayload(t *testing.T) {
 		t.Fatalf("payload = %q, want nil", payload)
 	}
 }
+
 func TestVerifierValidatesInputLimits(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x72}, 32)
 	signer := newHMACSigner(t, secret, "")
@@ -44,6 +45,7 @@ func TestVerifierValidatesInputLimits(t *testing.T) {
 	_, err = payloadLimited.VerifyMessage(context.Background(), raw)
 	requireErrorIs(t, err, ErrPayloadTooLarge)
 }
+
 func TestVerifierValidatesExpectedHeaders(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x73}, 32)
 	signer := newHMACSigner(
@@ -75,6 +77,7 @@ func TestVerifierValidatesExpectedHeaders(t *testing.T) {
 	_, err = wrongContentType.VerifyMessage(context.Background(), raw)
 	requireErrorIs(t, err, ErrUnexpectedContentType)
 }
+
 func TestVerifierUsesResolver(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x74}, 32)
 	signer := newHMACSigner(
@@ -113,6 +116,7 @@ func TestVerifierUsesResolver(t *testing.T) {
 		t.Fatalf("KeyID = %q, want %q", verified.KeyID, "trusted-key")
 	}
 }
+
 func TestVerifierRejectsNilResolvedKey(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x75}, 32)
 	signer := newHMACSigner(t, secret, "nil-key")
@@ -133,6 +137,7 @@ func TestVerifierRejectsNilResolvedKey(t *testing.T) {
 	_, err = verifier.VerifyMessage(context.Background(), raw)
 	requireErrorIs(t, err, ErrVerify)
 }
+
 func TestVerifierClonesStaticVerificationKey(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x76}, 32)
 	verificationSecret := bytes.Clone(secret)
@@ -151,6 +156,7 @@ func TestVerifierClonesStaticVerificationKey(t *testing.T) {
 	requireNoError(t, err)
 	requireBytesEqual(t, verified.Payload, []byte("payload"))
 }
+
 func TestVerifierEnforcesAlgorithmAllowlist(t *testing.T) {
 	secret := bytes.Repeat([]byte{0xb2}, 64)
 	signer := newHMACSigner(t, secret, "")

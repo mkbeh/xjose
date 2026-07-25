@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
-	"github.com/mkbeh/xjwt/jwe"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwe"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const (
@@ -29,7 +29,7 @@ type AccessClaims struct {
 	UserID string   `json:"user_id"`
 	Scopes []string `json:"scopes"`
 
-	jwt.RegisteredClaims
+	gojwt.RegisteredClaims
 }
 
 func main() {
@@ -38,31 +38,31 @@ func main() {
 	// Create the signing and verification components for the inner JWT.
 	signingPrivateKey := generateRSAKey("signing")
 
-	signingKey, err := xjwt.NewSigningKey(
+	signingKey, err := jwt.NewSigningKey(
 		signingKeyID,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		signingPrivateKey,
 	)
 	if err != nil {
 		log.Fatalf("create signing key: %v", err)
 	}
 
-	signer, err := xjwt.NewSigner(
+	signer, err := jwt.NewSigner(
 		signingKey,
-		xjwt.WithType(tokenType),
+		jwt.WithType(tokenType),
 	)
 	if err != nil {
 		log.Fatalf("create JWT signer: %v", err)
 	}
 
-	jwtVerifier, err := xjwt.NewVerifier(
+	jwtVerifier, err := jwt.NewVerifier(
 		signingKey.VerificationKey(),
-		xjwt.WithMethods(jwt.SigningMethodPS256),
-		xjwt.WithIssuer(issuer),
-		xjwt.WithAudience(audience),
-		xjwt.WithType(tokenType),
-		xjwt.RequireIssuedAt(),
-		xjwt.WithMaxLifetime(tokenLifetime),
+		jwt.WithMethods(gojwt.SigningMethodPS256),
+		jwt.WithIssuer(issuer),
+		jwt.WithAudience(audience),
+		jwt.WithType(tokenType),
+		jwt.RequireIssuedAt(),
+		jwt.WithMaxLifetime(tokenLifetime),
 	)
 	if err != nil {
 		log.Fatalf("create JWT verifier: %v", err)
@@ -123,12 +123,12 @@ func main() {
 				"orders:read",
 				"orders:write",
 			},
-			RegisteredClaims: jwt.RegisteredClaims{
+			RegisteredClaims: gojwt.RegisteredClaims{
 				Issuer:    issuer,
 				Subject:   "user-123",
-				Audience:  jwt.ClaimStrings{audience},
-				ExpiresAt: jwt.NewNumericDate(now.Add(tokenLifetime)),
-				IssuedAt:  jwt.NewNumericDate(now),
+				Audience:  gojwt.ClaimStrings{audience},
+				ExpiresAt: gojwt.NewNumericDate(now.Add(tokenLifetime)),
+				IssuedAt:  gojwt.NewNumericDate(now),
 				ID:        "token-123",
 			},
 		},

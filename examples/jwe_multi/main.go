@@ -9,7 +9,7 @@ import (
 	"log"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/mkbeh/xjwt/jwe"
+	"github.com/mkbeh/xjose/jwe"
 )
 
 const (

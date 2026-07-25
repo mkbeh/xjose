@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
-	"github.com/mkbeh/xjwt/jwk"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwk"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const (
@@ -24,9 +24,9 @@ func main() {
 		log.Fatalf("generate RSA key: %v", err)
 	}
 
-	verificationKey, err := xjwt.NewVerificationKey(
+	verificationKey, err := jwt.NewVerificationKey(
 		keyID,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		&privateKey.PublicKey,
 	)
 	if err != nil {
@@ -57,7 +57,7 @@ func main() {
 
 	parsedVerificationKey, err := jwk.ToVerificationKey(
 		parsedJWK,
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 	)
 	if err != nil {
 		log.Fatalf("convert JWK to verification key: %v", err)

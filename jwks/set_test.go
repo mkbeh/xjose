@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v4"
-	jwt "github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	"github.com/go-jose/go-jose/v4"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 type keyFixture struct {
 	name       string
 	keyID      string
-	method     jwt.SigningMethod
+	method     gojwt.SigningMethod
 	privateKey any
 	publicKey  any
 }
@@ -32,7 +32,7 @@ type keyFixture struct {
 type accessClaims struct {
 	UserID string `json:"user_id"`
 
-	jwt.RegisteredClaims
+	gojwt.RegisteredClaims
 }
 
 func TestNew(t *testing.T) {
@@ -87,7 +87,7 @@ func TestNewAllowsSingleAnonymousKey(t *testing.T) {
 	})
 	requireNoError(t, err)
 
-	resolved, err := set.Resolve(context.Background(), xjwt.Header{
+	resolved, err := set.Resolve(context.Background(), jwt.Header{
 		Algorithm: fixture.method.Alg(),
 	})
 	requireNoError(t, err)
@@ -116,7 +116,7 @@ func TestNewRejectsInvalidSets(t *testing.T) {
 	symmetricKey := Key{
 		Key:       bytes.Repeat([]byte{0x42}, 32),
 		KeyID:     "symmetric",
-		Algorithm: jwt.SigningMethodHS256.Alg(),
+		Algorithm: gojwt.SigningMethodHS256.Alg(),
 		Use:       keyUseSignature,
 	}
 	anonymous := Key{
@@ -144,12 +144,12 @@ func TestNewRejectsInvalidSets(t *testing.T) {
 		keys []Key
 		want error
 	}{
-		{name: "empty", keys: nil, want: xjwt.ErrInvalidKey},
-		{name: "zero key", keys: []Key{{}}, want: xjwt.ErrInvalidKey},
-		{name: "private key", keys: []Key{privateKey}, want: xjwt.ErrInvalidKey},
-		{name: "symmetric key", keys: []Key{symmetricKey}, want: xjwt.ErrInvalidKey},
-		{name: "anonymous in multi-key set", keys: []Key{anonymous, named}, want: xjwt.ErrInvalidKey},
-		{name: "duplicate key ID", keys: []Key{duplicateA, duplicateB}, want: xjwt.ErrDuplicateKeyID},
+		{name: "empty", keys: nil, want: jwt.ErrInvalidKey},
+		{name: "zero key", keys: []Key{{}}, want: jwt.ErrInvalidKey},
+		{name: "private key", keys: []Key{privateKey}, want: jwt.ErrInvalidKey},
+		{name: "symmetric key", keys: []Key{symmetricKey}, want: jwt.ErrInvalidKey},
+		{name: "anonymous in multi-key set", keys: []Key{anonymous, named}, want: jwt.ErrInvalidKey},
+		{name: "duplicate key ID", keys: []Key{duplicateA, duplicateB}, want: jwt.ErrDuplicateKeyID},
 	}
 
 	for _, testCase := range tests {
@@ -206,7 +206,7 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 	symmetricData := marshalSet(t, []Key{{
 		Key:       bytes.Repeat([]byte{0x24}, 32),
 		KeyID:     "symmetric",
-		Algorithm: jwt.SigningMethodHS256.Alg(),
+		Algorithm: gojwt.SigningMethodHS256.Alg(),
 		Use:       keyUseSignature,
 	}})
 
@@ -215,15 +215,15 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 		data []byte
 		want error
 	}{
-		{name: "nil", data: nil, want: xjwt.ErrInvalidKey},
-		{name: "empty", data: []byte{}, want: xjwt.ErrInvalidKey},
-		{name: "malformed", data: []byte(`{"keys":`), want: xjwt.ErrInvalidKey},
-		{name: "null", data: []byte(`null`), want: xjwt.ErrInvalidKey},
-		{name: "empty object", data: []byte(`{}`), want: xjwt.ErrInvalidKey},
-		{name: "empty keys", data: []byte(`{"keys":[]}`), want: xjwt.ErrInvalidKey},
-		{name: "keys is not an array", data: []byte(`{"keys":{}}`), want: xjwt.ErrInvalidKey},
-		{name: "private key", data: privateData, want: xjwt.ErrInvalidKey},
-		{name: "symmetric key", data: symmetricData, want: xjwt.ErrInvalidKey},
+		{name: "nil", data: nil, want: jwt.ErrInvalidKey},
+		{name: "empty", data: []byte{}, want: jwt.ErrInvalidKey},
+		{name: "malformed", data: []byte(`{"keys":`), want: jwt.ErrInvalidKey},
+		{name: "null", data: []byte(`null`), want: jwt.ErrInvalidKey},
+		{name: "empty object", data: []byte(`{}`), want: jwt.ErrInvalidKey},
+		{name: "empty keys", data: []byte(`{"keys":[]}`), want: jwt.ErrInvalidKey},
+		{name: "keys is not an array", data: []byte(`{"keys":{}}`), want: jwt.ErrInvalidKey},
+		{name: "private key", data: privateData, want: jwt.ErrInvalidKey},
+		{name: "symmetric key", data: symmetricData, want: jwt.ErrInvalidKey},
 	}
 
 	for _, testCase := range tests {
@@ -246,11 +246,11 @@ func TestParseWithLimit(t *testing.T) {
 	}
 
 	_, err = ParseWithLimit(data, len(keys)-1)
-	requireErrorIs(t, err, xjwt.ErrInvalidKey)
+	requireErrorIs(t, err, jwt.ErrInvalidKey)
 
 	for _, maxKeys := range []int{0, -1} {
 		_, err = ParseWithLimit(data, maxKeys)
-		requireErrorIs(t, err, xjwt.ErrInvalidConfig)
+		requireErrorIs(t, err, jwt.ErrInvalidConfig)
 	}
 }
 
@@ -259,7 +259,7 @@ func TestParseUsesDefaultMaxKeys(t *testing.T) {
 	data := marshalSet(t, makeKeys(fixture, DefaultMaxKeys+1))
 
 	_, err := Parse(data)
-	requireErrorIs(t, err, xjwt.ErrInvalidKey)
+	requireErrorIs(t, err, jwt.ErrInvalidKey)
 }
 
 func TestResolve(t *testing.T) {
@@ -280,7 +280,7 @@ func TestResolve(t *testing.T) {
 
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
-			resolved, err := set.Resolve(context.Background(), xjwt.Header{
+			resolved, err := set.Resolve(context.Background(), jwt.Header{
 				Algorithm: fixture.method.Alg(),
 				KeyID:     fixture.keyID,
 			})
@@ -315,35 +315,35 @@ func TestResolveErrors(t *testing.T) {
 	requireNoError(t, err)
 
 	var nilSet *Set
-	_, err = nilSet.Resolve(context.Background(), xjwt.Header{
+	_, err = nilSet.Resolve(context.Background(), jwt.Header{
 		Algorithm: fixture.method.Alg(),
 		KeyID:     fixture.keyID,
 	})
-	requireErrorIs(t, err, xjwt.ErrInvalidConfig)
+	requireErrorIs(t, err, jwt.ErrInvalidConfig)
 
 	var zero Set
-	_, err = zero.Resolve(context.Background(), xjwt.Header{
+	_, err = zero.Resolve(context.Background(), jwt.Header{
 		Algorithm: fixture.method.Alg(),
 		KeyID:     fixture.keyID,
 	})
-	requireErrorIs(t, err, xjwt.ErrInvalidConfig)
+	requireErrorIs(t, err, jwt.ErrInvalidConfig)
 
-	_, err = set.Resolve(context.Background(), xjwt.Header{
+	_, err = set.Resolve(context.Background(), jwt.Header{
 		Algorithm: fixture.method.Alg(),
 	})
-	requireErrorIs(t, err, xjwt.ErrMissingKeyID)
+	requireErrorIs(t, err, jwt.ErrMissingKeyID)
 
-	_, err = set.Resolve(context.Background(), xjwt.Header{
+	_, err = set.Resolve(context.Background(), jwt.Header{
 		Algorithm: fixture.method.Alg(),
 		KeyID:     "missing",
 	})
-	requireErrorIs(t, err, xjwt.ErrUnknownKey)
+	requireErrorIs(t, err, jwt.ErrUnknownKey)
 
-	_, err = set.Resolve(context.Background(), xjwt.Header{
-		Algorithm: jwt.SigningMethodES256.Alg(),
+	_, err = set.Resolve(context.Background(), jwt.Header{
+		Algorithm: gojwt.SigningMethodES256.Alg(),
 		KeyID:     fixture.keyID,
 	})
-	requireErrorIs(t, err, xjwt.ErrUnexpectedAlgorithm)
+	requireErrorIs(t, err, jwt.ErrUnexpectedAlgorithm)
 }
 
 func TestResolveValidatesJWKPolicy(t *testing.T) {
@@ -353,7 +353,7 @@ func TestResolveValidatesJWKPolicy(t *testing.T) {
 		set, err := New(Key{Key: fixture.publicKey})
 		requireNoError(t, err)
 
-		resolved, err := set.Resolve(context.Background(), xjwt.Header{
+		resolved, err := set.Resolve(context.Background(), jwt.Header{
 			Algorithm: fixture.method.Alg(),
 		})
 		requireNoError(t, err)
@@ -375,33 +375,33 @@ func TestResolveValidatesJWKPolicy(t *testing.T) {
 		})
 		requireNoError(t, err)
 
-		_, err = set.Resolve(context.Background(), xjwt.Header{
+		_, err = set.Resolve(context.Background(), jwt.Header{
 			Algorithm: fixture.method.Alg(),
 		})
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 
 	t.Run("unknown algorithm", func(t *testing.T) {
 		set, err := New(Key{Key: fixture.publicKey})
 		requireNoError(t, err)
 
-		_, err = set.Resolve(context.Background(), xjwt.Header{
+		_, err = set.Resolve(context.Background(), jwt.Header{
 			Algorithm: "unknown",
 		})
-		requireErrorIs(t, err, xjwt.ErrUnexpectedAlgorithm)
+		requireErrorIs(t, err, jwt.ErrUnexpectedAlgorithm)
 	})
 
 	t.Run("algorithm incompatible with key type", func(t *testing.T) {
 		set, err := New(Key{
 			Key:       fixture.publicKey,
-			Algorithm: jwt.SigningMethodES256.Alg(),
+			Algorithm: gojwt.SigningMethodES256.Alg(),
 		})
 		requireNoError(t, err)
 
-		_, err = set.Resolve(context.Background(), xjwt.Header{
-			Algorithm: jwt.SigningMethodES256.Alg(),
+		_, err = set.Resolve(context.Background(), jwt.Header{
+			Algorithm: gojwt.SigningMethodES256.Alg(),
 		})
-		requireErrorIs(t, err, xjwt.ErrInvalidKey)
+		requireErrorIs(t, err, jwt.ErrInvalidKey)
 	})
 }
 
@@ -454,8 +454,8 @@ func TestNilSetAccessors(t *testing.T) {
 }
 
 func TestFromVerificationKeyRejectsUninitializedKey(t *testing.T) {
-	_, err := fromVerificationKey(xjwt.VerificationKey{})
-	requireErrorIs(t, err, xjwt.ErrInvalidKey)
+	_, err := fromVerificationKey(jwt.VerificationKey{})
+	requireErrorIs(t, err, jwt.ErrInvalidKey)
 }
 
 func TestMarshalJSON(t *testing.T) {
@@ -513,10 +513,10 @@ func TestMarshalJSON(t *testing.T) {
 
 func TestFromStaticKeySet(t *testing.T) {
 	fixtures := asymmetricKeyFixtures(t)
-	verificationKeys := make([]xjwt.VerificationKey, 0, len(fixtures))
+	verificationKeys := make([]jwt.VerificationKey, 0, len(fixtures))
 
 	for _, fixture := range fixtures {
-		verificationKey, err := xjwt.NewVerificationKey(
+		verificationKey, err := jwt.NewVerificationKey(
 			fixture.keyID,
 			fixture.method,
 			fixture.publicKey,
@@ -525,7 +525,7 @@ func TestFromStaticKeySet(t *testing.T) {
 		verificationKeys = append(verificationKeys, verificationKey)
 	}
 
-	staticSet, err := xjwt.NewStaticKeySet(verificationKeys...)
+	staticSet, err := jwt.NewStaticKeySet(verificationKeys...)
 	requireNoError(t, err)
 
 	set, err := FromStaticKeySet(staticSet)
@@ -537,7 +537,7 @@ func TestFromStaticKeySet(t *testing.T) {
 	}
 
 	for _, fixture := range fixtures {
-		resolved, err := set.Resolve(context.Background(), xjwt.Header{
+		resolved, err := set.Resolve(context.Background(), jwt.Header{
 			Algorithm: fixture.method.Alg(),
 			KeyID:     fixture.keyID,
 		})
@@ -551,22 +551,22 @@ func TestFromStaticKeySet(t *testing.T) {
 
 func TestFromStaticKeySetRejectsInvalidSets(t *testing.T) {
 	_, err := FromStaticKeySet(nil)
-	requireErrorIs(t, err, xjwt.ErrInvalidConfig)
+	requireErrorIs(t, err, jwt.ErrInvalidConfig)
 
-	_, err = FromStaticKeySet(&xjwt.StaticKeySet{})
-	requireErrorIs(t, err, xjwt.ErrInvalidKey)
+	_, err = FromStaticKeySet(&jwt.StaticKeySet{})
+	requireErrorIs(t, err, jwt.ErrInvalidKey)
 
-	hmacKey, err := xjwt.NewVerificationKey(
+	hmacKey, err := jwt.NewVerificationKey(
 		"hmac",
-		jwt.SigningMethodHS256,
+		gojwt.SigningMethodHS256,
 		bytes.Repeat([]byte{0x7a}, 32),
 	)
 	requireNoError(t, err)
-	hmacSet, err := xjwt.NewStaticKeySet(hmacKey)
+	hmacSet, err := jwt.NewStaticKeySet(hmacKey)
 	requireNoError(t, err)
 
 	_, err = FromStaticKeySet(hmacSet)
-	requireErrorIs(t, err, xjwt.ErrInvalidKey)
+	requireErrorIs(t, err, jwt.ErrInvalidKey)
 }
 
 func TestSetEndToEndVerifier(t *testing.T) {
@@ -579,47 +579,47 @@ func TestSetEndToEndVerifier(t *testing.T) {
 		{
 			Key:       &oldPrivateKey.PublicKey,
 			KeyID:     "rsa-old",
-			Algorithm: jwt.SigningMethodPS256.Alg(),
+			Algorithm: gojwt.SigningMethodPS256.Alg(),
 			Use:       keyUseSignature,
 		},
 		{
 			Key:       &currentPrivateKey.PublicKey,
 			KeyID:     "rsa-current",
-			Algorithm: jwt.SigningMethodPS256.Alg(),
+			Algorithm: gojwt.SigningMethodPS256.Alg(),
 			Use:       keyUseSignature,
 		},
 	}
 	set, err := New(keys...)
 	requireNoError(t, err)
 
-	signingKey, err := xjwt.NewSigningKey(
+	signingKey, err := jwt.NewSigningKey(
 		"rsa-current",
-		jwt.SigningMethodPS256,
+		gojwt.SigningMethodPS256,
 		currentPrivateKey,
 	)
 	requireNoError(t, err)
-	signer, err := xjwt.NewSigner(signingKey)
+	signer, err := jwt.NewSigner(signingKey)
 	requireNoError(t, err)
 
 	now := time.Unix(1_800_000_000, 0).UTC()
 	raw, err := signer.Sign(context.Background(), &accessClaims{
 		UserID: "user-123",
-		RegisteredClaims: jwt.RegisteredClaims{
+		RegisteredClaims: gojwt.RegisteredClaims{
 			Issuer:    "https://issuer.example",
 			Subject:   "subject-123",
-			Audience:  jwt.ClaimStrings{"orders-api"},
-			ExpiresAt: jwt.NewNumericDate(now.Add(15 * time.Minute)),
-			IssuedAt:  jwt.NewNumericDate(now),
+			Audience:  gojwt.ClaimStrings{"orders-api"},
+			ExpiresAt: gojwt.NewNumericDate(now.Add(15 * time.Minute)),
+			IssuedAt:  gojwt.NewNumericDate(now),
 		},
 	})
 	requireNoError(t, err)
 
-	verifier, err := xjwt.NewVerifier(
+	verifier, err := jwt.NewVerifier(
 		set,
-		xjwt.WithMethods(jwt.SigningMethodPS256),
-		xjwt.WithIssuer("https://issuer.example"),
-		xjwt.WithAudience("orders-api"),
-		xjwt.WithClock(func() time.Time { return now }),
+		jwt.WithMethods(gojwt.SigningMethodPS256),
+		jwt.WithIssuer("https://issuer.example"),
+		jwt.WithAudience("orders-api"),
+		jwt.WithClock(func() time.Time { return now }),
 	)
 	requireNoError(t, err)
 
@@ -664,7 +664,7 @@ func TestSetConcurrentUse(t *testing.T) {
 
 			fixture := fixtures[worker%len(fixtures)]
 			for iteration := 0; iteration < iterations; iteration++ {
-				resolved, err := set.Resolve(context.Background(), xjwt.Header{
+				resolved, err := set.Resolve(context.Background(), jwt.Header{
 					Algorithm: fixture.method.Alg(),
 					KeyID:     fixture.keyID,
 				})
@@ -724,21 +724,21 @@ func asymmetricKeyFixtures(t testing.TB) []keyFixture {
 		{
 			name:       "RSA",
 			keyID:      "rsa-2026-07",
-			method:     jwt.SigningMethodPS256,
+			method:     gojwt.SigningMethodPS256,
 			privateKey: rsaPrivateKey,
 			publicKey:  &rsaPrivateKey.PublicKey,
 		},
 		{
 			name:       "ECDSA",
 			keyID:      "ecdsa-2026-07",
-			method:     jwt.SigningMethodES256,
+			method:     gojwt.SigningMethodES256,
 			privateKey: ecdsaPrivateKey,
 			publicKey:  &ecdsaPrivateKey.PublicKey,
 		},
 		{
 			name:       "Ed25519",
 			keyID:      "ed25519-2026-07",
-			method:     jwt.SigningMethodEdDSA,
+			method:     gojwt.SigningMethodEdDSA,
 			privateKey: ed25519PrivateKey,
 			publicKey:  ed25519PublicKey,
 		},

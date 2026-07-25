@@ -60,8 +60,6 @@ func TestSigningKeyValidationAndJWKMetadata(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
-
 		t.Run(test.name, func(t *testing.T) {
 			_, err := test.key.build()
 			requireErrorIs(t, err, ErrInvalidConfig)
@@ -85,6 +83,7 @@ func TestSigningKeyValidationAndJWKMetadata(t *testing.T) {
 		t.Fatalf("JWK metadata = %#v", jwk)
 	}
 }
+
 func TestBuildSigningKeys(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x92}, 64)
 

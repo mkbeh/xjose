@@ -65,6 +65,7 @@ func TestMultiSignerProducesFlattenedAndGeneralSerialization(t *testing.T) {
 		t.Fatalf("signature count = %d, want 2", len(generalObject.Signatures))
 	}
 }
+
 func TestMultiSignerValidatesInput(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x82}, 32)
 
@@ -92,6 +93,7 @@ func TestMultiSignerValidatesInput(t *testing.T) {
 	_, err = nilSigner.Sign([]byte("payload"))
 	requireErrorIs(t, err, ErrInvalidConfig)
 }
+
 func TestMultiSignerSupportsOpaqueSigners(t *testing.T) {
 	issuer := newOpaqueEdSigner(t, "issuer-opaque")
 	approval := newOpaqueEdSigner(t, "approval-opaque")
@@ -131,6 +133,7 @@ func TestMultiSignerSupportsOpaqueSigners(t *testing.T) {
 		t.Fatalf("signature count = %d, want 2", len(verified.Signatures))
 	}
 }
+
 func TestMultiSignerConcurrentUse(t *testing.T) {
 	secret := bytes.Repeat([]byte{0x83}, 64)
 
@@ -152,7 +155,6 @@ func TestMultiSignerConcurrentUse(t *testing.T) {
 	errorsChannel := make(chan error, workers)
 
 	for worker := 0; worker < workers; worker++ {
-		worker := worker
 		wait.Add(1)
 
 		go func() {

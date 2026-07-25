@@ -18,7 +18,7 @@ func cloneKeyMaterial(key any) any {
 
 	case *jose.JSONWebKey:
 		if key == nil {
-			return key
+			return nil
 		}
 
 		cloned := *key

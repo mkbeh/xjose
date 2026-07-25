@@ -23,12 +23,12 @@ func TestKeyResolverFunc(t *testing.T) {
 
 	got, err := resolver.Resolve(context.Background(), Header{KeyID: "kid"})
 	requireNoError(t, err)
-	requireBytesEqual(t, got.([]byte), want)
+	requireBytesEqual(t, requireType[[]byte](t, got), want)
 }
 
 func TestStaticResolver(t *testing.T) {
 	key := []byte("key")
 	got, err := (staticResolver{key: key}).Resolve(context.Background(), Header{})
 	requireNoError(t, err)
-	requireBytesEqual(t, got.([]byte), key)
+	requireBytesEqual(t, requireType[[]byte](t, got), key)
 }

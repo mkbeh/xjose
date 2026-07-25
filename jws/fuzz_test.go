@@ -48,7 +48,7 @@ func FuzzVerifierVerifyMessage(f *testing.F) {
 	f.Add("not-a-jws")
 	f.Add("a.b.c")
 
-	f.Fuzz(func(t *testing.T, raw string) {
+	f.Fuzz(func(_ *testing.T, raw string) {
 		_, _ = verifier.VerifyMessage(context.Background(), raw)
 	})
 }
@@ -87,7 +87,7 @@ func FuzzVerifierVerifyDetached(f *testing.F) {
 	f.Add("a..b", []byte("payload"))
 	f.Add("", []byte{})
 
-	f.Fuzz(func(t *testing.T, raw string, payload []byte) {
+	f.Fuzz(func(_ *testing.T, raw string, payload []byte) {
 		_, _ = verifier.VerifyDetached(context.Background(), raw, payload)
 	})
 }
@@ -129,7 +129,7 @@ func FuzzMultiVerifierVerifyMessage(f *testing.F) {
 	f.Add(`{"payload":"","signatures":[]}`)
 	f.Add("not-json")
 
-	f.Fuzz(func(t *testing.T, raw string) {
+	f.Fuzz(func(_ *testing.T, raw string) {
 		_, _ = verifier.VerifyMessage(context.Background(), raw)
 	})
 }

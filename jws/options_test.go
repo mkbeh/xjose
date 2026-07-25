@@ -22,8 +22,6 @@ func TestOptionsValidation(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
-
 		t.Run(test.name, func(t *testing.T) {
 			_, err := NewSigner(
 				SigningKey{Algorithm: jose.HS256, Key: secret},
@@ -54,6 +52,7 @@ func TestOptionsValidation(t *testing.T) {
 	)
 	requireErrorIs(t, err, ErrInvalidConfig)
 }
+
 func TestHeaderOptionsUseLastValue(t *testing.T) {
 	secret := bytes.Repeat([]byte{0xa2}, 32)
 
@@ -79,6 +78,7 @@ func TestHeaderOptionsUseLastValue(t *testing.T) {
 		t.Fatalf("custom = %#v, want %q", got, "second")
 	}
 }
+
 func TestTypeAndContentTypeRoundTripWithVerifier(t *testing.T) {
 	secret := bytes.Repeat([]byte{0xa4}, 32)
 	signer := newHMACSigner(

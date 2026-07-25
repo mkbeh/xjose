@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const (
@@ -31,7 +31,7 @@ type Set struct {
 	keyByID map[string]int
 }
 
-var _ xjwt.KeyResolver = (*Set)(nil)
+var _ jwt.KeyResolver = (*Set)(nil)
 
 // New creates a JWK Set from trusted in-memory public keys.
 func New(keys ...Key) (*Set, error) {
@@ -48,7 +48,7 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 	if maxKeys <= 0 {
 		return nil, fmt.Errorf(
 			"%w: maximum key count must be positive",
-			xjwt.ErrInvalidConfig,
+			jwt.ErrInvalidConfig,
 		)
 	}
 
@@ -57,7 +57,7 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 	if err := json.Unmarshal(data, &document); err != nil {
 		return nil, fmt.Errorf(
 			"%w: parse JWKS: %w",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 			err,
 		)
 	}
@@ -65,7 +65,7 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 	if len(document.Keys) > maxKeys {
 		return nil, fmt.Errorf(
 			"%w: JWKS contains %d keys, limit is %d",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 			len(document.Keys),
 			maxKeys,
 		)
@@ -77,11 +77,11 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 // FromStaticKeySet exports an xjwt verification-key set as a public JWK Set.
 //
 // Symmetric verification keys cannot be exported as public JWKs.
-func FromStaticKeySet(keySet *xjwt.StaticKeySet) (*Set, error) {
+func FromStaticKeySet(keySet *jwt.StaticKeySet) (*Set, error) {
 	if keySet == nil {
 		return nil, fmt.Errorf(
 			"%w: key set is nil",
-			xjwt.ErrInvalidConfig,
+			jwt.ErrInvalidConfig,
 		)
 	}
 
@@ -108,7 +108,7 @@ func newSet(keys []Key) (*Set, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf(
 			"%w: JWKS contains no keys",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
@@ -127,7 +127,7 @@ func newSet(keys []Key) (*Set, error) {
 		if len(ownedKeys) > 1 && key.KeyID == "" {
 			return nil, fmt.Errorf(
 				"%w: JWK %d has no key ID",
-				xjwt.ErrInvalidKey,
+				jwt.ErrInvalidKey,
 				index,
 			)
 		}
@@ -139,7 +139,7 @@ func newSet(keys []Key) (*Set, error) {
 		if _, exists := keyByID[key.KeyID]; exists {
 			return nil, fmt.Errorf(
 				"%w: %q",
-				xjwt.ErrDuplicateKeyID,
+				jwt.ErrDuplicateKeyID,
 				key.KeyID,
 			)
 		}
@@ -155,17 +155,17 @@ func newSet(keys []Key) (*Set, error) {
 
 // Resolve selects a public verification key using the protected alg and kid
 // header parameters.
-func (s *Set) Resolve(_ context.Context, header xjwt.Header) (xjwt.VerificationKey, error) {
+func (s *Set) Resolve(_ context.Context, header jwt.Header) (jwt.VerificationKey, error) {
 	if s == nil || len(s.keys) == 0 {
-		return xjwt.VerificationKey{}, fmt.Errorf(
+		return jwt.VerificationKey{}, fmt.Errorf(
 			"%w: JWKS is uninitialized",
-			xjwt.ErrInvalidConfig,
+			jwt.ErrInvalidConfig,
 		)
 	}
 
 	key, err := s.resolveKey(header.KeyID)
 	if err != nil {
-		return xjwt.VerificationKey{}, err
+		return jwt.VerificationKey{}, err
 	}
 
 	return toVerificationKey(key, header.Algorithm)
@@ -174,7 +174,7 @@ func (s *Set) Resolve(_ context.Context, header xjwt.Header) (xjwt.VerificationK
 func (s *Set) resolveKey(keyID string) (Key, error) {
 	if keyID == "" {
 		if len(s.keys) != 1 || s.keys[0].KeyID != "" {
-			return Key{}, xjwt.ErrMissingKeyID
+			return Key{}, jwt.ErrMissingKeyID
 		}
 
 		return s.keys[0], nil
@@ -184,7 +184,7 @@ func (s *Set) resolveKey(keyID string) (Key, error) {
 	if !exists {
 		return Key{}, fmt.Errorf(
 			"%w: key ID %q",
-			xjwt.ErrUnknownKey,
+			jwt.ErrUnknownKey,
 			keyID,
 		)
 	}
@@ -192,33 +192,33 @@ func (s *Set) resolveKey(keyID string) (Key, error) {
 	return s.keys[index], nil
 }
 
-func toVerificationKey(key Key, algorithm string) (xjwt.VerificationKey, error) {
+func toVerificationKey(key Key, algorithm string) (jwt.VerificationKey, error) {
 	if key.Use != "" && key.Use != keyUseSignature {
-		return xjwt.VerificationKey{}, fmt.Errorf(
+		return jwt.VerificationKey{}, fmt.Errorf(
 			"%w: JWK use %q does not permit signature verification",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 			key.Use,
 		)
 	}
 
 	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return xjwt.VerificationKey{}, xjwt.ErrUnexpectedAlgorithm
+		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
 	}
 
-	method := jwt.GetSigningMethod(algorithm)
+	method := gojwt.GetSigningMethod(algorithm)
 	if method == nil {
-		return xjwt.VerificationKey{}, xjwt.ErrUnexpectedAlgorithm
+		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
 	}
 
-	return xjwt.NewVerificationKey(key.KeyID, method, key.Key)
+	return jwt.NewVerificationKey(key.KeyID, method, key.Key)
 }
 
-func fromVerificationKey(key xjwt.VerificationKey) (Key, error) {
+func fromVerificationKey(key jwt.VerificationKey) (Key, error) {
 	method := key.Method()
 	if method == nil {
 		return Key{}, fmt.Errorf(
 			"%w: verification key is uninitialized",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
@@ -226,14 +226,14 @@ func fromVerificationKey(key xjwt.VerificationKey) (Key, error) {
 	if raw == nil {
 		return Key{}, fmt.Errorf(
 			"%w: verification key is uninitialized",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
 	if _, symmetric := raw.([]byte); symmetric {
 		return Key{}, fmt.Errorf(
 			"%w: symmetric keys cannot be exported as public JWKs",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 
@@ -255,7 +255,7 @@ func validatePublicKey(key Key) error {
 	if !key.Valid() || !key.IsPublic() {
 		return fmt.Errorf(
 			"%w: JWK must contain a valid public key",
-			xjwt.ErrInvalidKey,
+			jwt.ErrInvalidKey,
 		)
 	}
 

@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"github.com/mkbeh/xjose/jwt"
 )
 
 const nestedJWTContentType = "JWT"
 
 // NestedIssuer signs a JWT and encrypts the resulting compact token as JWE.
 type NestedIssuer struct {
-	signer    *xjwt.Signer
+	signer    *jwt.Signer
 	encrypter *Encrypter
 }
 
@@ -20,7 +20,7 @@ type NestedIssuer struct {
 //
 // The encrypter must be configured with cty=JWT.
 func NewNestedIssuer(
-	signer *xjwt.Signer,
+	signer *jwt.Signer,
 	encrypter *Encrypter,
 ) (*NestedIssuer, error) {
 	if signer == nil {
@@ -52,7 +52,7 @@ func NewNestedIssuer(
 }
 
 // Issue signs claims as a compact JWT and encrypts it as a nested compact JWE.
-func (issuer *NestedIssuer) Issue(ctx context.Context, claims jwt.Claims) (string, error) {
+func (issuer *NestedIssuer) Issue(ctx context.Context, claims gojwt.Claims) (string, error) {
 	if issuer == nil ||
 		issuer.signer == nil ||
 		issuer.encrypter == nil {
@@ -86,19 +86,19 @@ func (issuer *NestedIssuer) Issue(ctx context.Context, claims jwt.Claims) (strin
 // Claims are decoded into the value passed to NestedVerifier.VerifyToken.
 type VerifiedToken struct {
 	JWEHeader Header
-	JWTHeader xjwt.Header
+	JWTHeader jwt.Header
 }
 
 // NestedVerifier decrypts an outer JWE and verifies the nested signed JWT.
 type NestedVerifier struct {
 	decrypter *Decrypter
-	verifier  *xjwt.Verifier
+	verifier  *jwt.Verifier
 }
 
 // NewNestedVerifier creates a decrypt-then-verify nested JWT verifier.
 func NewNestedVerifier(
 	decrypter *Decrypter,
-	verifier *xjwt.Verifier,
+	verifier *jwt.Verifier,
 ) (*NestedVerifier, error) {
 	if decrypter == nil {
 		return nil, fmt.Errorf(
@@ -133,7 +133,7 @@ func NewNestedVerifier(
 func (verifier *NestedVerifier) Verify(
 	ctx context.Context,
 	raw string,
-	claims jwt.Claims,
+	claims gojwt.Claims,
 ) error {
 	_, err := verifier.VerifyToken(ctx, raw, claims)
 	return err
@@ -144,7 +144,7 @@ func (verifier *NestedVerifier) Verify(
 func (verifier *NestedVerifier) VerifyToken(
 	ctx context.Context,
 	raw string,
-	claims jwt.Claims,
+	claims gojwt.Claims,
 ) (VerifiedToken, error) {
 	if verifier == nil ||
 		verifier.decrypter == nil ||
