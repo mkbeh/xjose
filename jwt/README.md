@@ -2,19 +2,10 @@
 
 Secure, typed helpers for signing and verifying compact JSON Web Tokens in Go.
 
-The `jwt` module builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt) and adds explicit key types, strict
-verification defaults, resolver-based key selection, external signing support, and configurable security policies.
-
-> [!IMPORTANT]
-> JWTs provide integrity and authenticity, not confidentiality. Anyone who obtains a token can decode its header and
-> claims. Use the [JWE module](../jwe) when sensitive payloads must be encrypted.
-
-## Overview
-
-Use this module to issue and verify compact signed JWTs with structured claims.
-
-It provides a high-level API around signing keys, verification keys, claim validation, key rotation, and external
-signing systems while preserving compatibility with custom claim types supported by the upstream `jwt.Claims` interface.
+The `jwt` module builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt) and provides a high-level API for issuing
+and verifying signed JWTs with structured claims. It adds explicit key types, strict verification defaults,
+resolver-based key selection, external signing support, configurable security policies, and compatibility with custom
+claim types implementing the upstream `jwt.Claims` interface.
 
 For complete runnable examples, see the [examples](../examples) directory.
 
