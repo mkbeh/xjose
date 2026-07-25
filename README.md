@@ -87,20 +87,13 @@ Each module maintains its own documentation, versions, and dependency graph.
 
 See the [examples](examples) directory for usage examples:
 
-* **JWT — JSON Web Token**
-    * [HMAC Signing](examples/jwt_hmac)
-    * [Asymmetric Signing](examples/jwt_asymmetric)
-* **JWS — JSON Web Signature**
-    * [Compact JWS](examples/jws)
-    * [Multiple Signatures](examples/jws_multi)
-    * [Opaque Signing](examples/jws_opaque)
-* **JWE — JSON Web Encryption**
-    * [Compact JWE](examples/jwe)
-    * [Multiple Recipients](examples/jwe_multi)
-* **JWK — JSON Web Key**
-    * [Key Conversion and Thumbprints](examples/jwk)
-* **JWKS — JSON Web Key Set**
-    * [Key Publication and Resolution](examples/jwks)
+| Module   | Examples                                                                                                        |
+|----------|-----------------------------------------------------------------------------------------------------------------|
+| **JWT**  | [HMAC Signing](examples/jwt_hmac) · [Asymmetric Signing](examples/jwt_asymmetric)                               |
+| **JWS**  | [Compact JWS](examples/jws) · [Multiple Signatures](examples/jws_multi) · [Opaque Signing](examples/jws_opaque) |
+| **JWE**  | [Compact JWE](examples/jwe) · [Multiple Recipients](examples/jwe_multi)                                         |
+| **JWK**  | [Key Conversion and Thumbprints](examples/jwk)                                                                  |
+| **JWKS** | [Key Publication and Resolution](examples/jwks)                                                                 |
 
 For installation details, core workflows, and security considerations, see the README for each module.
 
