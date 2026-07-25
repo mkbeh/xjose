@@ -1,13 +1,15 @@
-// Package jws provides helpers for signing and verifying arbitrary byte
+// Package jws provides secure helpers for signing and verifying arbitrary byte
 // payloads using JSON Web Signature (JWS).
 //
-// Signer and Verifier operate on Compact JWS Serialization with one signature
-// and support both embedded and detached payloads.
+// [Signer] and [Verifier] operate on Compact JWS Serialization with embedded or
+// detached payloads.
 //
-// MultiSigner and MultiVerifier operate on Flattened and General JWS JSON
-// Serialization with one or more independent signatures. MultiVerifier
-// supports configurable application-level signature policies.
+// [MultiSigner] and [MultiVerifier] operate on Flattened and General JWS JSON
+// Serialization with one or more independent signatures. [MultiVerifier]
+// supports resolver-based key selection and configurable application-level
+// signature policies.
 //
-// JWS provides payload integrity and authenticity, but not encryption or replay
-// protection. The package does not interpret JWT claims.
+// JWS provides payload integrity and authenticity, but not confidentiality or
+// replay protection. The package treats payloads as opaque bytes and does not
+// interpret or validate JWT claims.
 package jws
