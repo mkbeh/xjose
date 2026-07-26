@@ -47,34 +47,30 @@ jobs:
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
 
-      - name: Download dependencies
+      - name: Verify workspace resolution
         working-directory: ${{ matrix.module }}
-        run: go mod download
-
-      - name: Verify dependencies
-        working-directory: ${{ matrix.module }}
-        run: go mod verify
-
-      - name: Check module files
-        working-directory: ${{ matrix.module }}
-        shell: bash
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: |
-          set -euo pipefail
+          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
+          go list -m -f '{{if .Main}}{{.Path}}{{end}}' all | sed '/^$/d'
 
-          go mod tidy
-
-          if [[ -n "$(git status --porcelain -- go.mod go.sum)" ]]; then
-            git status --short -- go.mod go.sum
-            git diff -- go.mod go.sum
-            exit 1
-          fi
+      - name: Verify downloaded dependencies
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: go mod verify
 
       - name: Run go vet
         working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: go vet -mod=readonly ./...
 
       - name: Build packages
         working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: go build -mod=readonly ./...
 
   test:
@@ -108,8 +104,18 @@ jobs:
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
 
+      - name: Verify workspace resolution
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
+          go list -m -f '{{if .Main}}{{.Path}}{{end}}' all | sed '/^$/d'
+
       - name: Run tests
         working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: |
           go test \
             -mod=readonly \
@@ -124,6 +130,8 @@ jobs:
 
       - name: Print coverage summary
         working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: go tool cover -func=coverage.out
 
       - name: Upload coverage artifact
@@ -167,34 +175,8 @@ jobs:
             jwks/go.sum
             examples/**/go.sum
 
-      - name: Create temporary Go workspace
-        run: bash .github/scripts/create-go-workspace.sh --with-examples
-
       - name: Set up Task
         uses: go-task/setup-task@v2
-
-      - name: Check example module files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          find ./examples -name go.mod -print0 |
-          sort -z |
-          while IFS= read -r -d '' mod; do
-            dir="$(dirname "${mod}")"
-            echo "==> ${dir}"
-
-            (
-              cd "${dir}"
-              go mod tidy -v
-            )
-          done
-
-          if [[ -n "$(git status --porcelain -- examples)" ]]; then
-            git status --short -- examples
-            git diff -- examples
-            exit 1
-          fi
 
       - name: Build and test examples
         run: task check-examples
@@ -218,8 +200,18 @@ jobs:
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
 
+      - name: Verify workspace resolution
+        working-directory: doctests
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
+          go list -m -f '{{if .Main}}{{.Path}}{{end}}' all | sed '/^$/d'
+
       - name: Run doctests
         working-directory: doctests
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: |
           go test \
             -mod=readonly \

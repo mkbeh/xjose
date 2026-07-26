@@ -56,6 +56,8 @@ jobs:
 
       - name: Build modules
         shell: bash
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: |
           set -euo pipefail
 

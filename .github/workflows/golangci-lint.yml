@@ -49,6 +49,8 @@ jobs:
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         with:
           version: v2.12.2
           working-directory: ${{ matrix.module }}

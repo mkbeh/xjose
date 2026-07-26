@@ -51,6 +51,8 @@ jobs:
 
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         with:
           repo-checkout: false
           work-dir: ${{ matrix.module }}
