@@ -45,19 +45,7 @@ jobs:
             doctests/go.sum
 
       - name: Create temporary Go workspace
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
-
-          (
-            cd "${workspace}"
-            GOWORK=off go work init
-            go work use -r "${GITHUB_WORKSPACE}"
-          )
-
-          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
+        run: bash .github/scripts/create-go-workspace.sh
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
