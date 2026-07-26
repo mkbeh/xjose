@@ -68,4 +68,7 @@ done < <(
 )
 
 echo "Created temporary Go workspace at ${root}/go.work"
-GOWORK="${root}/go.work" go work edit -json
+
+if [[ "${WORKSPACE_DEBUG:-false}" == "true" ]]; then
+  GOWORK="${root}/go.work" go work edit -json
+fi

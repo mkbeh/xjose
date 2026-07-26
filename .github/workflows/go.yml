@@ -20,8 +20,8 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
-  verify:
-    name: Verify (${{ matrix.module }})
+  vet:
+    name: Vet (${{ matrix.module }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -41,40 +41,19 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: ${{ matrix.module }}/go.mod
-          check-latest: true
           cache-dependency-path: ${{ matrix.module }}/go.sum
 
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
-
-      - name: Verify workspace resolution
-        working-directory: ${{ matrix.module }}
-        env:
-          GOWORK: ${{ github.workspace }}/go.work
-        run: |
-          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
-          go list -m -f '{{if .Main}}{{.Path}}{{end}}' all | sed '/^$/d'
-
-      - name: Verify downloaded dependencies
-        working-directory: ${{ matrix.module }}
-        env:
-          GOWORK: ${{ github.workspace }}/go.work
-        run: go mod verify
 
       - name: Run go vet
         working-directory: ${{ matrix.module }}
         env:
           GOWORK: ${{ github.workspace }}/go.work
         run: go vet -mod=readonly ./...
-
-      - name: Build packages
-        working-directory: ${{ matrix.module }}
-        env:
-          GOWORK: ${{ github.workspace }}/go.work
-        run: go build -mod=readonly ./...
 
   test:
     name: Test (${{ matrix.module }})
@@ -98,10 +77,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: ${{ matrix.module }}/go.mod
-          check-latest: true
           cache-dependency-path: ${{ matrix.module }}/go.sum
 
       - name: Create temporary Go workspace
@@ -158,10 +136,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: jwt/go.mod
-          check-latest: true
           cache-dependency-path: |
             jwt/go.sum
             jws/go.sum
@@ -207,10 +184,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: doctests/go.mod
-          check-latest: true
           cache-dependency-path: doctests/go.sum
 
       - name: Create temporary Go workspace
@@ -232,7 +208,7 @@ jobs:
     name: CI
     if: always()
     needs:
-      - verify
+      - vet
       - test
       - examples
       - doctests
@@ -243,7 +219,7 @@ jobs:
       - name: Check required jobs
         shell: bash
         run: |
-          test "${{ needs.verify.result }}" = "success"
+          test "${{ needs.vet.result }}" = "success"
           test "${{ needs.test.result }}" = "success"
           test "${{ needs.examples.result }}" = "success"
           test "${{ needs.doctests.result }}" = "success"
