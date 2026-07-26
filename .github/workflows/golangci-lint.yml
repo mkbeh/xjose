@@ -16,9 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  GOWORK: ${{ github.workspace }}/go.work
-
 jobs:
   lint:
     name: Lint (${{ matrix.module }})
@@ -43,9 +40,24 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
+          go-version-file: ${{ matrix.module }}/go.mod
           check-latest: true
           cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9

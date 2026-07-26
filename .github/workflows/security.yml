@@ -18,9 +18,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  GOWORK: ${{ github.workspace }}/go.work
-
 jobs:
   govulncheck:
     name: govulncheck (${{ matrix.module }})
@@ -42,15 +39,36 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          check-latest: true
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
+
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
         with:
           repo-checkout: false
           work-dir: ${{ matrix.module }}
-          go-version-file: go.work
+          go-version-file: ${{ matrix.module }}/go.mod
           check-latest: true
-          cache: true
-          cache-dependency-path: ${{ matrix.module }}/go.sum
+          cache: false
           go-package: ./...
 
   result:

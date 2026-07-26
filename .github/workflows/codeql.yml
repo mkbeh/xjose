@@ -21,9 +21,6 @@ permissions:
   packages: read
   security-events: write
 
-env:
-  GOWORK: ${{ github.workspace }}/go.work
-
 jobs:
   analyze:
     name: Analyze Go
@@ -37,7 +34,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
+          go-version-file: jwt/go.mod
           check-latest: true
           cache-dependency-path: |
             jwt/go.sum
@@ -45,6 +42,22 @@ jobs:
             jwe/go.sum
             jwk/go.sum
             jwks/go.sum
+            doctests/go.sum
+
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -59,8 +72,8 @@ jobs:
           set -euo pipefail
 
           for module in jwt jws jwe jwk jwks; do
-            echo "::group::$module"
-            go build -C "$module" -mod=readonly ./...
+            echo "::group::${module}"
+            go build -C "${module}" -mod=readonly ./...
             echo "::endgroup::"
           done
 

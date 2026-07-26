@@ -16,9 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  GOWORK: ${{ github.workspace }}/go.work
-
 jobs:
   verify:
     name: Verify (${{ matrix.module }})
@@ -43,9 +40,24 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
+          go-version-file: ${{ matrix.module }}/go.mod
           check-latest: true
           cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
 
       - name: Download dependencies
         working-directory: ${{ matrix.module }}
@@ -99,9 +111,24 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
+          go-version-file: ${{ matrix.module }}/go.mod
           check-latest: true
           cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
 
       - name: Run tests
         working-directory: ${{ matrix.module }}
@@ -151,7 +178,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
+          go-version-file: jwt/go.mod
           check-latest: true
           cache-dependency-path: |
             jwt/go.sum
@@ -161,6 +188,21 @@ jobs:
             jwks/go.sum
             examples/**/go.sum
 
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
+
       - name: Set up Task
         uses: go-task/setup-task@v2
 
@@ -169,7 +211,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          task tidy-examples
+          find ./examples -name go.mod -print0 |
+          sort -z |
+          while IFS= read -r -d '' mod; do
+            dir="$(dirname "${mod}")"
+            echo "==> ${dir}"
+
+            (
+              cd "${dir}"
+              go mod tidy -v
+            )
+          done
 
           if [[ -n "$(git status --porcelain -- examples)" ]]; then
             git status --short -- examples
@@ -192,9 +244,24 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
+          go-version-file: doctests/go.mod
           check-latest: true
           cache-dependency-path: doctests/go.sum
+
+      - name: Create temporary Go workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(mktemp -d "${RUNNER_TEMP}/xjose-workspace.XXXXXX")"
+
+          (
+            cd "${workspace}"
+            GOWORK=off go work init
+            go work use -r "${GITHUB_WORKSPACE}"
+          )
+
+          echo "GOWORK=${workspace}/go.work" >> "${GITHUB_ENV}"
 
       - name: Run doctests
         working-directory: doctests
