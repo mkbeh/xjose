@@ -1,5 +1,9 @@
 # JWT
 
+[![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mkbeh/xjose/jwt.svg)](https://pkg.go.dev/github.com/mkbeh/xjose/jwt)
+[![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg?flag=jwt)](https://codecov.io/gh/mkbeh/xjose)
+
 Secure, typed helpers for signing and verifying compact JSON Web Tokens in Go.
 
 The `jwt` module builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt) and provides a high-level API for issuing

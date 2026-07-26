@@ -1,5 +1,9 @@
 # JWS
 
+[![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mkbeh/xjose/jws.svg)](https://pkg.go.dev/github.com/mkbeh/xjose/jws)
+[![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg?flag=jws)](https://codecov.io/gh/mkbeh/xjose)
+
 Secure helpers for signing and verifying arbitrary byte payloads with JSON Web Signature (JWS) in Go.
 
 The `jws` module builds on [go-jose](https://github.com/go-jose/go-jose) and adds strict algorithm allowlists,

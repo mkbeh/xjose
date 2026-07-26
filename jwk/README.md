@@ -1,5 +1,9 @@
 # JWK
 
+[![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mkbeh/xjose/jwk.svg)](https://pkg.go.dev/github.com/mkbeh/xjose/jwk)
+[![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg?flag=jwk)](https://codecov.io/gh/mkbeh/xjose)
+
 Secure helpers for parsing, exporting, and identifying public JSON Web Keys (JWKs) in Go.
 
 The `jwk` module builds on [go-jose](https://github.com/go-jose/go-jose) and integrates public JWKs with the

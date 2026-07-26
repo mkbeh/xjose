@@ -1,5 +1,9 @@
 # JWE
 
+[![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mkbeh/xjose/jwe.svg)](https://pkg.go.dev/github.com/mkbeh/xjose/jwe)
+[![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg?flag=jwe)](https://codecov.io/gh/mkbeh/xjose)
+
 Secure helpers for encrypting and decrypting arbitrary byte payloads with JSON Web Encryption (JWE) in Go.
 
 The `jwe` module builds on [go-jose](https://github.com/go-jose/go-jose) and adds strict algorithm allowlists,

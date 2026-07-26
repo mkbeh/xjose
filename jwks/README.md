@@ -1,5 +1,9 @@
 # JWKS
 
+[![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mkbeh/xjose/jwks.svg)](https://pkg.go.dev/github.com/mkbeh/xjose/jwks)
+[![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg?flag=jwks)](https://codecov.io/gh/mkbeh/xjose)
+
 Secure helpers for parsing, publishing, and resolving public JSON Web Key Sets (JWKS) in Go.
 
 The `jwks` module builds on [go-jose](https://github.com/go-jose/go-jose) and integrates public key sets with the
