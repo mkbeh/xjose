@@ -17,7 +17,7 @@ env:
 
 tasks:
   run:
-    desc: "Run lint and tests for all modules"
+    desc: "Run lint and tests for all modules and doctests"
     cmds:
       - task: lint
       - task: test
@@ -53,7 +53,7 @@ tasks:
           WORK_DIR: ./doctests
 
   lint:
-    desc: "Lint all modules"
+    desc: "Lint all modules and doctests"
     cmds:
       - task: lint-jwt
       - task: lint-jws
@@ -105,7 +105,7 @@ tasks:
           WORK_DIR: /app/doctests
 
   test:
-    desc: "Test all modules"
+    desc: "Test all modules and doctests"
     cmds:
       - task: test-jwt
       - task: test-jws
@@ -157,31 +157,18 @@ tasks:
           WORK_DIR: ./doctests
 
   tidy-examples:
-    desc: "Tidy example module dependencies"
-    cmds:
-      - |
-        set -euo pipefail
-
-        find ./examples -name go.mod -print |
-        sort |
-        while IFS= read -r mod; do
-          dir="$(dirname "$mod")"
-          echo "==> $dir"
-
-          (
-            cd "$dir"
-            GOWORK=off go mod tidy -v
-          )
-        done
-
-  check-examples:
-    desc: "Check example modules against the local checkout"
+    desc: "Tidy example module dependencies against the local workspace"
     cmds:
       - |
         set -euo pipefail
 
         root="{{.ROOT_DIR}}"
 
+        if [[ ! -f "$root/go.work" ]]; then
+          echo "go.work not found; create the local workspace before tidying examples"
+          exit 1
+        fi
+
         find ./examples -name go.mod -print |
         sort |
         while IFS= read -r mod; do
@@ -189,22 +176,33 @@ tasks:
           echo "==> $dir"
 
           (
-            workspace="$(mktemp -d)"
-            trap 'rm -rf "$workspace"' EXIT
-
-            (
-              cd "$workspace"
-              GOWORK=off go work init \
-                "$root/jwt" \
-                "$root/jws" \
-                "$root/jwe" \
-                "$root/jwk" \
-                "$root/jwks" \
-                "$root/${dir#./}"
-            )
-
             cd "$root/${dir#./}"
-            GOWORK="$workspace/go.work" go test -mod=readonly -race -count=1 ./...
+            GOWORK="$root/go.work" go mod tidy -v
+          )
+        done
+
+  check-examples:
+    desc: "Check example modules against the local workspace"
+    cmds:
+      - |
+        set -euo pipefail
+
+        root="{{.ROOT_DIR}}"
+
+        if [[ ! -f "$root/go.work" ]]; then
+          echo "go.work not found; create the local workspace before checking examples"
+          exit 1
+        fi
+
+        find ./examples -name go.mod -print |
+        sort |
+        while IFS= read -r mod; do
+          dir="$(dirname "$mod")"
+          echo "==> $dir"
+
+          (
+            cd "$root/${dir#./}"
+            GOWORK="$root/go.work" go test -mod=readonly -race -count=1 ./...
           )
         done
 

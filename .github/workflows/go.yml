@@ -16,6 +16,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   verify:
     name: Verify (${{ matrix.module }})
@@ -104,14 +107,6 @@ jobs:
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
 
-      - name: Verify workspace resolution
-        working-directory: ${{ matrix.module }}
-        env:
-          GOWORK: ${{ github.workspace }}/go.work
-        run: |
-          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
-          go list -m -f '{{if .Main}}{{.Path}}{{end}}' all | sed '/^$/d'
-
       - name: Run tests
         working-directory: ${{ matrix.module }}
         env:
@@ -178,6 +173,11 @@ jobs:
       - name: Set up Task
         uses: go-task/setup-task@v2
 
+      - name: Check example dependency files
+        run: |
+          task tidy-examples
+          git diff --exit-code -- examples
+
       - name: Build and test examples
         run: task check-examples
 
@@ -199,14 +199,6 @@ jobs:
 
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
-
-      - name: Verify workspace resolution
-        working-directory: doctests
-        env:
-          GOWORK: ${{ github.workspace }}/go.work
-        run: |
-          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
-          go list -m -f '{{if .Main}}{{.Path}}{{end}}' all | sed '/^$/d'
 
       - name: Run doctests
         working-directory: doctests

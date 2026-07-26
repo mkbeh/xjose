@@ -18,18 +18,11 @@ if [[ -f ./doctests/go.mod ]]; then
   modules+=(./doctests)
 fi
 
-if [[ "${1:-}" == "--with-examples" ]]; then
-  while IFS= read -r -d '' mod; do
-    modules+=("$(dirname "${mod}")")
-  done < <(find ./examples -name go.mod -print0 | sort -z)
-fi
-
-# Create an ephemeral workspace in the checkout. It is never committed.
+# The workspace is ephemeral and exists only for the current CI job.
 GOWORK=off go work init "${modules[@]}"
 
-# Make unpublished internal requirements explicit. The use directives are
-# sufficient for ordinary builds, while these version-specific replacements
-# also prevent tools from resolving current xjose module versions remotely.
+# Internal modules already reference their release versions in go.mod, while
+# those tags may not exist yet. Keep those requirements local to this checkout.
 while read -r module version; do
   case "${module}" in
     github.com/mkbeh/xjose/*)
@@ -41,7 +34,7 @@ while read -r module version; do
       ;;
   esac
 done < <(
-  find ./jwt ./jws ./jwe ./jwk ./jwks ./doctests ./examples \
+  find ./jwt ./jws ./jwe ./jwk ./jwks ./doctests \
     -name go.mod -type f -print0 2>/dev/null |
   xargs -0 awk '
     $1 ~ /^github\.com\/mkbeh\/xjose\// && $2 ~ /^v[0-9]/ {

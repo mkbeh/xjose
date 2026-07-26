@@ -21,6 +21,9 @@ permissions:
   packages: read
   security-events: write
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   analyze:
     name: Analyze Go

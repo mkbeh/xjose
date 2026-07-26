@@ -16,6 +16,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   lint:
     name: Lint (${{ matrix.module }})
