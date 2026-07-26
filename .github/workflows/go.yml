@@ -168,12 +168,33 @@ jobs:
             jwe/go.sum
             jwk/go.sum
             jwks/go.sum
+            doctests/go.sum
             examples/**/go.sum
 
       - name: Set up Task
         uses: go-task/setup-task@v2
 
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh --with-examples
+
+      - name: Verify workspace resolution
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
+
+          go list -m -f '{{if .Main}}{{.Path}} => {{.Dir}}{{end}}' all |
+            sed '/^$/d'
+
+          for module in jwt jws jwe jwk jwks; do
+            go list -m \
+              -f 'path={{.Path}} main={{.Main}} version={{.Version}} dir={{.Dir}}' \
+              "github.com/mkbeh/xjose/${module}"
+          done
+
       - name: Build and test examples
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
         run: task check-examples
 
   doctests:
