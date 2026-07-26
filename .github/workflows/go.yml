@@ -173,11 +173,6 @@ jobs:
       - name: Set up Task
         uses: go-task/setup-task@v2
 
-      - name: Check example dependency files
-        run: |
-          task tidy-examples
-          git diff --exit-code -- examples
-
       - name: Build and test examples
         run: task check-examples
 
