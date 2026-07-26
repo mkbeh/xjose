@@ -12,9 +12,6 @@ vars:
   BENCH_TIME: "2s"
   BENCH_COUNT: "5"
 
-env:
-  GOWORK: "off"
-
 tasks:
   run:
     desc: "Run lint and tests for all modules and doctests"
@@ -23,34 +20,10 @@ tasks:
       - task: test
 
   before-commit:
-    desc: "Tidy modules and examples, then run all checks"
+    desc: "Run all checks before committing"
     cmds:
-      - task: tidy
-      - task: tidy-examples
-      - task: check-examples
       - task: run
-
-  tidy:
-    desc: "Tidy all module dependencies"
-    cmds:
-      - task: _tidy-module
-        vars:
-          WORK_DIR: ./jwt
-      - task: _tidy-module
-        vars:
-          WORK_DIR: ./jws
-      - task: _tidy-module
-        vars:
-          WORK_DIR: ./jwe
-      - task: _tidy-module
-        vars:
-          WORK_DIR: ./jwk
-      - task: _tidy-module
-        vars:
-          WORK_DIR: ./jwks
-      - task: _tidy-module
-        vars:
-          WORK_DIR: ./doctests
+      - task: check-examples
 
   lint:
     desc: "Lint all modules and doctests"
@@ -156,66 +129,113 @@ tasks:
         vars:
           WORK_DIR: ./doctests
 
-  tidy-examples:
-    desc: "Tidy example module dependencies against the local workspace"
+  check-examples:
+    desc: "Build and test example modules against the local checkout"
     cmds:
       - |
-        set -euo pipefail
+        set -eu
 
         root="{{.ROOT_DIR}}"
+        workspace="$root/go.work"
+        created_workspace=false
 
-        if [[ ! -f "$root/go.work" ]]; then
-          echo "go.work not found; create the local workspace before tidying examples"
-          exit 1
+        cleanup() {
+          if [ "$created_workspace" = "true" ]; then
+            rm -f "$root/go.work" "$root/go.work.sum"
+          fi
+        }
+        trap cleanup EXIT
+
+        if [ ! -f "$workspace" ]; then
+          created_workspace=true
+
+          (
+            cd "$root"
+
+            GOWORK=off go work init \
+              ./jwt \
+              ./jws \
+              ./jwe \
+              ./jwk \
+              ./jwks \
+              ./doctests
+
+            find ./examples -name go.mod -print |
+            sort |
+            while IFS= read -r mod; do
+              GOWORK="$workspace" go work use "$(dirname "$mod")"
+            done
+          )
         fi
 
-        find ./examples -name go.mod -print |
+        find "$root/examples" -name go.mod -print |
         sort |
         while IFS= read -r mod; do
           dir="$(dirname "$mod")"
-          echo "==> $dir"
+          echo "==> ${dir#"$root/"}"
 
           (
-            cd "$root/${dir#./}"
-            GOWORK="$root/go.work" go mod tidy -v
+            cd "$dir"
+            GOWORK="$workspace" go test -mod=readonly -race -count=1 ./...
           )
         done
 
-  check-examples:
-    desc: "Check example modules against the local workspace"
+  tidy:released:
+    desc: "Tidy all modules against published internal versions"
+    cmds:
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwt
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jws
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwe
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwk
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwks
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./doctests
+
+  tidy:examples:released:
+    desc: "Tidy example modules against published internal versions"
     cmds:
       - |
-        set -euo pipefail
+        set -eu
 
         root="{{.ROOT_DIR}}"
 
-        if [[ ! -f "$root/go.work" ]]; then
-          echo "go.work not found; create the local workspace before checking examples"
-          exit 1
-        fi
-
-        find ./examples -name go.mod -print |
+        find "$root/examples" -name go.mod -print |
         sort |
         while IFS= read -r mod; do
           dir="$(dirname "$mod")"
-          echo "==> $dir"
+          echo "==> ${dir#"$root/"}"
 
           (
-            cd "$root/${dir#./}"
-            GOWORK="$root/go.work" go test -mod=readonly -race -count=1 ./...
+            cd "$dir"
+            GOWORK=off go mod tidy -v
           )
         done
 
   coverage:
-    desc: "Run tests and print total coverage for all modules"
+    desc: "Run tests and print total coverage for production modules"
     cmds:
       - |
-        set -euo pipefail
+        set -eu
 
         root="{{.ROOT_DIR}}"
         output="$root/coverage.out"
         profiles="$(mktemp -d)"
-        trap 'rm -rf "$profiles"' EXIT
+
+        cleanup() {
+          rm -rf "$profiles"
+        }
+        trap cleanup EXIT
 
         printf 'mode: atomic\n' > "$output"
 
@@ -225,6 +245,7 @@ tasks:
 
           (
             cd "$root/$module"
+
             GOWORK="$root/go.work" go test \
               -tags=integration \
               -count=1 \
@@ -254,6 +275,7 @@ tasks:
       - bench
     cmds:
       - task: benchmark:jwt
+      - task: benchmark:jws
       - task: benchmark:jwe
 
   benchmark:jwt:
@@ -265,15 +287,6 @@ tasks:
         vars:
           WORK_DIR: ./jwt
 
-  benchmark:jwe:
-    desc: "Run JWE benchmarks"
-    aliases:
-      - bench:jwe
-    cmds:
-      - task: _run-benchmarks
-        vars:
-          WORK_DIR: ./jwe
-
   benchmark:jws:
     desc: "Run JWS benchmarks"
     aliases:
@@ -283,14 +296,23 @@ tasks:
         vars:
           WORK_DIR: ./jws
 
-  _tidy-module:
+  benchmark:jwe:
+    desc: "Run JWE benchmarks"
+    aliases:
+      - bench:jwe
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: ./jwe
+
+  _tidy-released-module:
     internal: true
     requires:
       vars:
         - WORK_DIR
     dir: "{{.WORK_DIR}}"
     env:
-      GOWORK: "{{.ROOT_DIR}}/go.work"
+      GOWORK: "off"
     cmds:
       - go mod tidy -v
 
