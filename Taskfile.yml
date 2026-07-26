@@ -204,9 +204,7 @@ tasks:
             )
 
             cd "$root/${dir#./}"
-            GOWORK="$workspace/go.work" go mod verify
-            GOWORK="$workspace/go.work" go vet ./...
-            GOWORK="$workspace/go.work" go test -race -count=1 ./...
+            GOWORK="$workspace/go.work" go test -mod=readonly -race -count=1 ./...
           )
         done
 

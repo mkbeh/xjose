@@ -36,13 +36,7 @@ jobs:
         with:
           go-version-file: jwt/go.mod
           check-latest: true
-          cache-dependency-path: |
-            jwt/go.sum
-            jws/go.sum
-            jwe/go.sum
-            jwk/go.sum
-            jwks/go.sum
-            doctests/go.sum
+          cache: false
 
       - name: Create temporary Go workspace
         run: bash .github/scripts/create-go-workspace.sh
@@ -54,6 +48,9 @@ jobs:
           build-mode: manual
           queries: security-extended
 
+      - name: Clear Go build cache
+        run: go clean -cache
+
       - name: Build modules
         shell: bash
         env:
@@ -63,7 +60,12 @@ jobs:
 
           for module in jwt jws jwe jwk jwks; do
             echo "::group::${module}"
-            go build -C "${module}" -mod=readonly ./...
+
+            (
+              cd "${module}"
+              go build -mod=readonly ./...
+            )
+
             echo "::endgroup::"
           done
 
