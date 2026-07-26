@@ -34,6 +34,7 @@ jobs:
           - jwe
           - jwk
           - jwks
+          - doctests
 
     steps:
       - name: Check out repository
@@ -179,6 +180,32 @@ jobs:
       - name: Build and test examples
         run: task check-examples
 
+  doctests:
+    name: Doctests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+          check-latest: true
+          cache-dependency-path: doctests/go.sum
+
+      - name: Run doctests
+        working-directory: doctests
+        run: |
+          go test \
+            -mod=readonly \
+            -race \
+            -shuffle=on \
+            -count=1 \
+            ./...
+
   ci:
     name: CI
     if: always()
@@ -186,6 +213,7 @@ jobs:
       - verify
       - test
       - examples
+      - doctests
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -196,3 +224,4 @@ jobs:
           test "${{ needs.verify.result }}" = "success"
           test "${{ needs.test.result }}" = "success"
           test "${{ needs.examples.result }}" = "success"
+          test "${{ needs.doctests.result }}" = "success"

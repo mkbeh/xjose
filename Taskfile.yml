@@ -48,6 +48,9 @@ tasks:
       - task: _tidy-module
         vars:
           WORK_DIR: ./jwks
+      - task: _tidy-module
+        vars:
+          WORK_DIR: ./doctests
 
   lint:
     desc: "Lint all modules"
@@ -57,6 +60,7 @@ tasks:
       - task: lint-jwe
       - task: lint-jwk
       - task: lint-jwks
+      - task: lint-doctests
 
   lint-jwt:
     desc: "Lint JWT module"
@@ -93,6 +97,13 @@ tasks:
         vars:
           WORK_DIR: /app/jwks
 
+  lint-doctests:
+    desc: "Lint doctests module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/doctests
+
   test:
     desc: "Test all modules"
     cmds:
@@ -101,6 +112,7 @@ tasks:
       - task: test-jwe
       - task: test-jwk
       - task: test-jwks
+      - task: test-doctests
 
   test-jwt:
     desc: "Test JWT module"
@@ -136,6 +148,13 @@ tasks:
       - task: _run-module-tests
         vars:
           WORK_DIR: ./jwks
+
+  test-doctests:
+    desc: "Run executable documentation tests"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./doctests
 
   tidy-examples:
     desc: "Tidy example module dependencies"

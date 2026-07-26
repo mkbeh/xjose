@@ -36,6 +36,7 @@ jobs:
           - jwe
           - jwk
           - jwks
+          - doctests
 
     steps:
       - name: Check out repository
