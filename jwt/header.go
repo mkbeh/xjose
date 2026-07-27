@@ -2,8 +2,6 @@ package jwt
 
 import (
 	"fmt"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -14,8 +12,6 @@ const (
 	headerParamType      = "typ"
 	headerParamCritical  = "crit"
 	headerParamBase64    = "b64"
-
-	algorithmNone = "none"
 
 	maxAlgorithmLength = 64
 	maxKeyIDLength     = 256
@@ -29,90 +25,75 @@ type Header struct {
 	Type      string
 }
 
+func (h Header) validate(expectedAlgorithm string) error {
+	if err := validateHeaderValue(headerParamAlgorithm, h.Algorithm, maxAlgorithmLength); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidHeader, err)
+	}
+
+	// Ensure that the signing method selected from the registry reports the
+	// same algorithm identifier as the protected header.
+	if h.Algorithm != expectedAlgorithm {
+		return ErrUnexpectedAlgorithm
+	}
+
+	if h.KeyID != "" {
+		if err := validateHeaderValue(headerParamKeyID, h.KeyID, maxKeyIDLength); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidHeader, err)
+		}
+	}
+
+	if h.Type != "" {
+		if err := validateHeaderValue(headerParamType, h.Type, maxTypeLength); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidHeader, err)
+		}
+	}
+
+	return nil
+}
+
 func parseTokenHeader(token *jwt.Token) (Header, error) {
 	if token == nil || token.Method == nil {
-		return Header{}, invalidHeader(
-			"signing method is missing",
-		)
-	}
-
-	if _, exists := token.Header[headerParamCritical]; exists {
-		return Header{}, invalidHeader(
-			"critical headers are not supported",
-		)
-	}
-
-	if _, exists := token.Header[headerParamBase64]; exists {
-		return Header{}, invalidHeader(
-			"unencoded payloads are not supported",
-		)
-	}
-
-	algorithm, err := headerString(
-		token.Header,
-		headerParamAlgorithm,
-		maxAlgorithmLength,
-		true,
-	)
-	if err != nil {
-		return Header{}, err
-	}
-
-	if algorithm == algorithmNone || algorithm != token.Method.Alg() {
-		return Header{}, ErrUnexpectedAlgorithm
-	}
-
-	keyID, err := headerString(
-		token.Header,
-		headerParamKeyID,
-		maxKeyIDLength,
-		false,
-	)
-	if err != nil {
-		return Header{}, err
-	}
-
-	if err := validateKeyID(keyID); err != nil {
 		return Header{}, fmt.Errorf(
-			"%w: %w",
+			"%w: signing method is missing",
 			ErrInvalidHeader,
-			err,
 		)
 	}
 
-	typ, err := headerString(
-		token.Header,
-		headerParamType,
-		maxTypeLength,
-		false,
-	)
+	if err := validateJWTHeaderExtensions(token.Header); err != nil {
+		return Header{}, err
+	}
+
+	algorithm, err := headerString(token.Header, headerParamAlgorithm)
 	if err != nil {
 		return Header{}, err
 	}
 
-	return Header{
+	keyID, err := headerString(token.Header, headerParamKeyID)
+	if err != nil {
+		return Header{}, err
+	}
+
+	typ, err := headerString(token.Header, headerParamType)
+	if err != nil {
+		return Header{}, err
+	}
+
+	header := Header{
 		Algorithm: algorithm,
 		KeyID:     keyID,
 		Type:      typ,
-	}, nil
+	}
+
+	if err := header.validate(token.Method.Alg()); err != nil {
+		return Header{}, err
+	}
+
+	return header, nil
 }
 
-func headerString(
-	header map[string]any,
-	name string,
-	maxLength int,
-	required bool,
-) (string, error) {
+func headerString(header map[string]any, name string) (string, error) {
 	value, exists := header[name]
 	if !exists {
-		if required {
-			return "", fmt.Errorf(
-				"%w: %s is required",
-				ErrInvalidHeader,
-				name,
-			)
-		}
-
 		return "", nil
 	}
 
@@ -125,56 +106,40 @@ func headerString(
 		)
 	}
 
-	if err := validateHeaderValue(name, text, maxLength); err != nil {
-		return "", fmt.Errorf(
-			"%w: %w",
-			ErrInvalidHeader,
-			err,
-		)
-	}
-
 	return text, nil
 }
 
 func validateHeaderValue(name, value string, maxLength int) error {
 	if value == "" {
-		return fmt.Errorf(
-			"%s must not be empty",
-			name,
-		)
+		return fmt.Errorf("%s must not be empty", name)
 	}
 
-	if len(value) > maxLength {
-		return fmt.Errorf(
-			"%s exceeds %d bytes",
-			name,
-			maxLength,
-		)
-	}
-
-	if !utf8.ValidString(value) {
-		return fmt.Errorf(
-			"%s is not valid UTF-8",
-			name,
-		)
-	}
-
-	for _, character := range value {
-		if unicode.IsControl(character) {
-			return fmt.Errorf(
-				"%s contains control characters",
-				name,
-			)
-		}
+	if exceedsLimit(value, maxLength) {
+		return fmt.Errorf("%s exceeds %d bytes", name, maxLength)
 	}
 
 	return nil
 }
 
-func invalidHeader(message string) error {
-	return fmt.Errorf(
-		"%w: %s",
-		ErrInvalidHeader,
-		message,
-	)
+func validateJWTHeaderExtensions(header map[string]any) error {
+	// JWT payloads must remain Base64URL-encoded. The b64 extension enables
+	// unencoded JWS payloads, which are not permitted for JWT.
+	if _, exists := header[headerParamBase64]; exists {
+		return fmt.Errorf(
+			"%w: b64 header parameter is not supported for JWT",
+			ErrInvalidHeader,
+		)
+	}
+
+	// Critical header parameters require explicit processing by the verifier.
+	// Reject crit because silently ignoring mandatory extensions could change
+	// the token's security semantics.
+	if _, exists := header[headerParamCritical]; exists {
+		return fmt.Errorf(
+			"%w: critical headers are not supported",
+			ErrInvalidHeader,
+		)
+	}
+
+	return nil
 }

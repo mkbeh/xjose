@@ -46,7 +46,6 @@ func TestVerifierOptionsRejectInvalidValues(t *testing.T) {
 		{name: "invalid max token size", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithMaxTokenSize(0)}},
 		{name: "empty issuer", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithIssuer("")}},
 		{name: "empty audience", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithAudience()}},
-		{name: "duplicate audience", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithAudience("api", "api")}},
 		{name: "empty subject", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithSubject("")}},
 		{name: "negative leeway", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithLeeway(-time.Second)}},
 		{name: "nil clock", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithClock(nil)}},

@@ -34,19 +34,6 @@ func TestSignerSignAppliesHeadersAndClaims(t *testing.T) {
 	}
 }
 
-func TestSignerWithoutType(t *testing.T) {
-	signer := newHMACSigner(t, "", WithoutType())
-
-	raw, err := signer.Sign(testContext(), validTestClaims())
-	requireNoError(t, err)
-
-	token, _, err := jwt.NewParser().ParseUnverified(raw, new(testClaims))
-	requireNoError(t, err)
-	if _, exists := token.Header[headerParamType]; exists {
-		t.Fatal("typ header is present")
-	}
-}
-
 func TestSignerRejectsInvalidInput(t *testing.T) {
 	signer := newHMACSigner(t, "")
 

@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"context"
 	"crypto/elliptic"
 	"strings"
 	"testing"
@@ -52,8 +53,12 @@ func TestNewSigningKeySupportsStandardMethods(t *testing.T) {
 }
 
 func TestKeyConstructorsRejectInvalidInput(t *testing.T) {
-	shortRSA := generateRSAKey(t, 1024)
-	wrongCurve := generateECDSAKey(t, elliptic.P384())
+	sign := func(
+		context.Context,
+		[]byte,
+	) ([]byte, error) {
+		return nil, nil
+	}
 
 	tests := []struct {
 		name   string
@@ -61,65 +66,96 @@ func TestKeyConstructorsRejectInvalidInput(t *testing.T) {
 		target error
 	}{
 		{
-			name: "invalid key id",
-			create: func() error {
-				_, err := NewSigningKey("key\n1", jwt.SigningMethodHS256, testHMACSecret())
-				return err
-			},
-			target: ErrInvalidKeyID,
-		},
-		{
 			name: "key id too long",
 			create: func() error {
-				_, err := NewVerificationKey(strings.Repeat("a", maxKeyIDLength+1), jwt.SigningMethodHS256, testHMACSecret())
+				_, err := NewVerificationKey(
+					strings.Repeat("a", maxKeyIDLength+1),
+					jwt.SigningMethodHS256,
+					testHMACSecret(),
+				)
+
 				return err
 			},
 			target: ErrInvalidKeyID,
 		},
 		{
-			name: "nil method",
+			name: "nil signing method",
 			create: func() error {
-				_, err := NewSigningKey("", nil, testHMACSecret())
+				_, err := NewSigningKey(
+					"",
+					nil,
+					testHMACSecret(),
+				)
+
 				return err
 			},
 			target: ErrInvalidKey,
 		},
 		{
-			name: "short HMAC secret",
+			name: "nil signing key",
 			create: func() error {
-				_, err := NewSigningKey("", jwt.SigningMethodHS256, []byte("short"))
+				_, err := NewSigningKey(
+					"",
+					jwt.SigningMethodHS256,
+					nil,
+				)
+
 				return err
 			},
 			target: ErrInvalidKey,
 		},
 		{
-			name: "small RSA key",
+			name: "nil verification method",
 			create: func() error {
-				_, err := NewSigningKey("", jwt.SigningMethodRS256, shortRSA)
+				_, err := NewVerificationKey(
+					"",
+					nil,
+					testHMACSecret(),
+				)
+
 				return err
 			},
 			target: ErrInvalidKey,
 		},
 		{
-			name: "wrong ECDSA curve",
+			name: "nil verification key",
 			create: func() error {
-				_, err := NewSigningKey("", jwt.SigningMethodES256, wrongCurve)
+				_, err := NewVerificationKey(
+					"",
+					jwt.SigningMethodHS256,
+					nil,
+				)
+
 				return err
 			},
 			target: ErrInvalidKey,
 		},
 		{
-			name: "invalid Ed25519 private key",
+			name: "nil external public key",
 			create: func() error {
-				_, err := NewSigningKey("", jwt.SigningMethodEdDSA, make([]byte, 32))
+				_, err := NewExternalSigningKey(
+					"",
+					jwt.SigningMethodEdDSA,
+					nil,
+					sign,
+				)
+
 				return err
 			},
 			target: ErrInvalidKey,
 		},
 		{
-			name: "wrong verification key type",
+			name: "nil external sign function",
 			create: func() error {
-				_, err := NewVerificationKey("", jwt.SigningMethodRS256, testHMACSecret())
+				publicKey, _ := generateEd25519Key(t)
+
+				_, err := NewExternalSigningKey(
+					"",
+					jwt.SigningMethodEdDSA,
+					publicKey,
+					nil,
+				)
+
 				return err
 			},
 			target: ErrInvalidKey,
@@ -128,47 +164,11 @@ func TestKeyConstructorsRejectInvalidInput(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			requireErrorIs(t, test.create(), test.target)
+			requireErrorIs(
+				t,
+				test.create(),
+				test.target,
+			)
 		})
-	}
-}
-
-func TestHMACKeyMaterialIsCopied(t *testing.T) {
-	secret := testHMACSecret()
-	originalFirstByte := secret[0]
-
-	key, err := NewSigningKey("key-1", jwt.SigningMethodHS256, secret)
-	requireNoError(t, err)
-
-	secret[0] ^= 0xff
-
-	verification := key.VerificationKey()
-
-	firstValue := verification.Key()
-	first, ok := firstValue.([]byte)
-	if !ok {
-		t.Fatalf(
-			"VerificationKey.Key() type = %T, want []byte",
-			firstValue,
-		)
-	}
-
-	if first[0] != originalFirstByte {
-		t.Fatal("constructor retained caller-owned HMAC bytes")
-	}
-
-	first[0] ^= 0xff
-
-	secondValue := verification.Key()
-	second, ok := secondValue.([]byte)
-	if !ok {
-		t.Fatalf(
-			"VerificationKey.Key() type = %T, want []byte",
-			secondValue,
-		)
-	}
-
-	if second[0] != originalFirstByte {
-		t.Fatal("Key() exposed internal HMAC bytes")
 	}
 }

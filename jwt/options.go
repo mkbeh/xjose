@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -24,9 +25,8 @@ type Option interface {
 }
 
 type signerConfig struct {
-	typ        string
-	includeTyp bool
-	maxSize    int
+	typ     string
+	maxSize int
 }
 
 type audienceMode uint8
@@ -59,10 +59,7 @@ type verifierConfig struct {
 }
 
 func (config verifierConfig) parserOptions() []jwt.ParserOption {
-	methods := make(
-		[]string,
-		len(config.methods),
-	)
+	methods := make([]string, len(config.methods))
 
 	for index, method := range config.methods {
 		methods[index] = method.Alg()
@@ -148,15 +145,10 @@ func (option typeOption) applySigner(config *signerConfig) error {
 	value := string(option)
 
 	if err := validateHeaderValue(headerParamType, value, maxTypeLength); err != nil {
-		return fmt.Errorf(
-			"%w: %w",
-			ErrInvalidConfig,
-			err,
-		)
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 
 	config.typ = value
-	config.includeTyp = true
 
 	return nil
 }
@@ -165,28 +157,10 @@ func (option typeOption) applyVerifier(config *verifierConfig) error {
 	value := string(option)
 
 	if err := validateHeaderValue(headerParamType, value, maxTypeLength); err != nil {
-		return fmt.Errorf(
-			"%w: %w",
-			ErrInvalidConfig,
-			err,
-		)
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 
 	config.typ = value
-
-	return nil
-}
-
-type withoutTypeOption struct{}
-
-// WithoutType omits typ from newly signed JWTs.
-func WithoutType() SignerOption {
-	return withoutTypeOption{}
-}
-
-func (withoutTypeOption) applySigner(config *signerConfig) error {
-	config.typ = ""
-	config.includeTyp = false
 
 	return nil
 }
@@ -289,12 +263,23 @@ func WithAllAudiences(audiences ...string) VerifierOption {
 }
 
 func (option audienceOption) applyVerifier(config *verifierConfig) error {
-	values, err := validateUniqueStrings("audience", option.values)
-	if err != nil {
-		return err
+	if len(option.values) == 0 {
+		return fmt.Errorf(
+			"%w: at least one audience is required",
+			ErrInvalidConfig,
+		)
 	}
 
-	config.audiences = values
+	for _, value := range option.values {
+		if value == "" {
+			return fmt.Errorf(
+				"%w: audience must not be empty",
+				ErrInvalidConfig,
+			)
+		}
+	}
+
+	config.audiences = slices.Clone(option.values)
 	config.audienceMode = option.mode
 
 	return nil
@@ -451,27 +436,4 @@ func (option maxTokenAgeOption) applyVerifier(config *verifierConfig) error {
 	config.maxAge = time.Duration(option)
 
 	return nil
-}
-
-func validateUniqueStrings(name string, values []string) ([]string, error) {
-	if len(values) == 0 {
-		return nil, fmt.Errorf("%w: at least one %s is required", ErrInvalidConfig, name)
-	}
-
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-
-	for _, value := range values {
-		if value == "" {
-			return nil, fmt.Errorf("%w: %s contains an empty value", ErrInvalidConfig, name)
-		}
-		if _, exists := seen[value]; exists {
-			return nil, fmt.Errorf("%w: duplicate %s %q", ErrInvalidConfig, name, value)
-		}
-
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-
-	return result, nil
 }

@@ -21,9 +21,8 @@ func NewSigner(key SigningKey, options ...SignerOption) (*Signer, error) {
 	}
 
 	c := signerConfig{
-		typ:        "JWT",
-		includeTyp: true,
-		maxSize:    DefaultMaxTokenSize,
+		typ:     "JWT",
+		maxSize: DefaultMaxTokenSize,
 	}
 
 	for _, option := range options {
@@ -74,19 +73,18 @@ func (s *Signer) Sign(ctx context.Context, claims jwt.Claims) (string, error) {
 	}
 
 	encodedSignature := token.EncodeSegment(signature)
+	signedToken := input + "." + encodedSignature
 
-	if len(input)+1+len(encodedSignature) > s.config.maxSize {
+	if len(signedToken) > s.config.maxSize {
 		return "", ErrTokenTooLarge
 	}
 
-	return input + "." + encodedSignature, nil
+	return signedToken, nil
 }
 
 func (s *Signer) applyHeaders(token *jwt.Token) {
-	if s.config.includeTyp {
+	if s.config.typ != "" {
 		token.Header[headerParamType] = s.config.typ
-	} else {
-		delete(token.Header, headerParamType)
 	}
 
 	if s.key.id != "" {

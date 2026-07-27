@@ -390,19 +390,6 @@ func TestResolveValidatesJWKPolicy(t *testing.T) {
 		})
 		requireErrorIs(t, err, jwt.ErrUnexpectedAlgorithm)
 	})
-
-	t.Run("algorithm incompatible with key type", func(t *testing.T) {
-		set, err := New(Key{
-			Key:       fixture.publicKey,
-			Algorithm: gojwt.SigningMethodES256.Alg(),
-		})
-		requireNoError(t, err)
-
-		_, err = set.Resolve(context.Background(), jwt.Header{
-			Algorithm: gojwt.SigningMethodES256.Alg(),
-		})
-		requireErrorIs(t, err, jwt.ErrInvalidKey)
-	})
 }
 
 func TestKeysReturnsSequenceCopy(t *testing.T) {

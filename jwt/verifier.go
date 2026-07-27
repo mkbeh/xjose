@@ -121,7 +121,7 @@ func (verifier *Verifier) parse(
 
 			header = parsedHeader
 
-			return verifier.resolveKey(ctx, parsedHeader, token)
+			return verifier.resolveKey(ctx, parsedHeader)
 		},
 	)
 	if err != nil {
@@ -138,12 +138,7 @@ func (verifier *Verifier) parse(
 func (verifier *Verifier) resolveKey(
 	ctx context.Context,
 	header Header,
-	token *jwt.Token,
 ) (any, error) {
-	if token.Method == nil || token.Method.Alg() != header.Algorithm {
-		return nil, ErrUnexpectedAlgorithm
-	}
-
 	key, err := verifier.resolver.Resolve(ctx, header)
 	if err != nil {
 		return nil, err
@@ -156,7 +151,7 @@ func (verifier *Verifier) resolveKey(
 		)
 	}
 
-	if key.method.Alg() != token.Method.Alg() {
+	if key.method.Alg() != header.Algorithm {
 		return nil, ErrUnexpectedAlgorithm
 	}
 
@@ -189,52 +184,78 @@ func (verifier *Verifier) validatePolicy(header Header, claims jwt.Claims) error
 }
 
 func validateLifetime(claims jwt.Claims, config verifierConfig) error {
-	needsIssuedAt := config.requireIAT ||
-		config.validateIAT ||
-		config.maxLifetime > 0 ||
-		config.maxAge > 0
-	if !needsIssuedAt {
+	// Skip reading iat when no configured policy depends on it.
+	if !config.requireIAT &&
+		!config.validateIAT &&
+		config.maxAge == 0 &&
+		config.maxLifetime == 0 {
 		return nil
 	}
 
 	issuedAt, err := claims.GetIssuedAt()
 	if err != nil {
-		return fmt.Errorf("%w: read iat: %w", ErrInvalidLifetime, err)
+		return fmt.Errorf(
+			"%w: read iat: %w",
+			ErrInvalidLifetime,
+			err,
+		)
 	}
+
+	// iat remains optional unless RequireIssuedAt was configured.
+	// Age and lifetime limits are applied only when the claim is present.
 	if issuedAt == nil {
 		if config.requireIAT {
-			return fmt.Errorf("%w: iat is required", ErrInvalidLifetime)
+			return fmt.Errorf(
+				"%w: iat is required",
+				ErrInvalidLifetime,
+			)
 		}
 
 		return nil
 	}
 
-	now := config.clock()
-	if (config.validateIAT || config.maxAge > 0) &&
-		issuedAt.After(now.Add(config.leeway)) {
-		return ErrIssuedInFuture
+	// Future-time and maximum-age policies depend on the current time.
+	// Leeway applies to both checks.
+	if config.validateIAT || config.maxAge > 0 {
+		now := config.clock()
+
+		if issuedAt.After(now.Add(config.leeway)) {
+			return ErrIssuedInFuture
+		}
+
+		if config.maxAge > 0 {
+			oldestAllowed := now.Add(
+				-config.maxAge - config.leeway,
+			)
+
+			if issuedAt.Before(oldestAllowed) {
+				return ErrInvalidLifetime
+			}
+		}
 	}
 
-	if config.maxAge > 0 &&
-		now.Sub(issuedAt.Time) > config.maxAge+config.leeway {
-		return ErrInvalidLifetime
-	}
-
+	// Maximum lifetime compares exp with iat and does not depend on the
+	// current time. The policy is skipped when exp is absent.
 	if config.maxLifetime == 0 {
 		return nil
 	}
 
 	expiresAt, err := claims.GetExpirationTime()
 	if err != nil {
-		return fmt.Errorf("%w: read exp: %w", ErrInvalidLifetime, err)
+		return fmt.Errorf(
+			"%w: read exp: %w",
+			ErrInvalidLifetime,
+			err,
+		)
 	}
+
 	if expiresAt == nil {
 		return nil
 	}
-	if !expiresAt.After(issuedAt.Time) {
-		return ErrInvalidLifetime
-	}
-	if expiresAt.Sub(issuedAt.Time) > config.maxLifetime {
+
+	lifetime := expiresAt.Sub(issuedAt.Time)
+	if lifetime <= 0 ||
+		lifetime > config.maxLifetime {
 		return ErrInvalidLifetime
 	}
 

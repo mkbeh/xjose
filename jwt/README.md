@@ -171,20 +171,6 @@ token, err := signer.Sign(ctx, claims)
 
 <!-- @formatter:on -->
 
-`WithType` replaces the default `"JWT"` value with an application-specific token type. Use `WithoutType` only when
-interoperability requires omitting the `typ` header:
-
-<!-- @formatter:off -->
-
-```go
-signer, err := jwt.NewSigner(
-	signingKey,
-	jwt.WithoutType(),
-)
-```
-
-<!-- @formatter:on -->
-
 `WithMaxTokenSize` limits the resulting compact token. Signing fails when the serialized token exceeds the configured
 bound; keep this limit as small as practical for the claims issued by the application.
 
