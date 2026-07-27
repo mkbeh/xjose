@@ -2,11 +2,16 @@ package jwe
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 )
 
 const (
+	maxAlgorithmLength   = 64
+	maxTypeLength        = 128
+	maxContentTypeLength = 128
+
 	headerAlgorithm   jose.HeaderKey = "alg"
 	headerType        jose.HeaderKey = "typ"
 	headerContentType jose.HeaderKey = "cty"
@@ -49,121 +54,201 @@ type Header struct {
 	ExtraHeaders map[jose.HeaderKey]any
 }
 
+func (header Header) validate() error {
+	check := func(name jose.HeaderKey, value string, maxLength int) error {
+		if err := validateHeaderValue(name, value, maxLength); err != nil {
+			return fmt.Errorf("%w: %w", ErrMalformedToken, err)
+		}
+		return nil
+	}
+
+	// Encryption is required for every JWE serialization.
+	if header.Encryption == "" {
+		return fmt.Errorf(
+			"%w: %s header is required",
+			ErrMalformedToken,
+			headerEncryption,
+		)
+	}
+
+	if err := check(headerEncryption, string(header.Encryption), maxAlgorithmLength); err != nil {
+		return err
+	}
+
+	// Algorithm may be absent from a shared multi-recipient header.
+	if header.Algorithm != "" {
+		if err := check(headerAlgorithm, string(header.Algorithm), maxAlgorithmLength); err != nil {
+			return err
+		}
+	}
+
+	// Optional application metadata is validated when present.
+	if header.Type != "" {
+		if err := check(headerType, header.Type, maxTypeLength); err != nil {
+			return err
+		}
+	}
+
+	if header.ContentType != "" {
+		if err := check(headerContentType, header.ContentType, maxContentTypeLength); err != nil {
+			return err
+		}
+	}
+
+	// Compression is optional and jose.NONE represents its absence.
+	if header.Compression != jose.NONE {
+		if err := check(headerCompression, string(header.Compression), maxAlgorithmLength); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // parseHeader converts a go-jose header into Header and validates the
 // structurally supported parameter subset.
-func parseHeader(header jose.Header) (Header, error) {
-	if _, exists := header.ExtraHeaders[headerCritical]; exists {
+func parseHeader(source jose.Header) (Header, error) {
+	if _, exists := source.ExtraHeaders[headerCritical]; exists {
 		return Header{}, fmt.Errorf(
 			"%w: critical headers are not supported",
 			ErrMalformedToken,
 		)
 	}
 
-	if err := validateHeaderValue(
-		headerAlgorithm,
-		header.Algorithm,
-		maxAlgorithmLength,
-	); err != nil {
+	encryption, err := headerString(source.ExtraHeaders, headerEncryption)
+	if err != nil {
+		return Header{}, err
+	}
+	typ, err := headerString(source.ExtraHeaders, jose.HeaderType)
+	if err != nil {
+		return Header{}, err
+	}
+	contentType, err := headerString(source.ExtraHeaders, jose.HeaderContentType)
+	if err != nil {
+		return Header{}, err
+	}
+	compression, err := headerString(source.ExtraHeaders, headerCompression)
+	if err != nil {
+		return Header{}, err
+	}
+
+	header := Header{
+		Algorithm:    jose.KeyAlgorithm(source.Algorithm),
+		Encryption:   jose.ContentEncryption(encryption),
+		Compression:  jose.CompressionAlgorithm(compression),
+		KeyID:        source.KeyID,
+		Type:         typ,
+		ContentType:  contentType,
+		ExtraHeaders: cloneExtraHeaders(source.ExtraHeaders),
+	}
+
+	if header.Algorithm == "" {
 		return Header{}, fmt.Errorf(
-			"%w: %w",
+			"%w: %s header is required",
 			ErrMalformedToken,
-			err,
+			headerAlgorithm,
 		)
 	}
 
-	encryption, err := headerString(
-		header.ExtraHeaders,
-		headerEncryption,
-		true,
-		maxAlgorithmLength,
-	)
+	if err := header.validate(); err != nil {
+		return Header{}, err
+	}
+
+	return header, nil
+}
+
+// parseMultiSharedHeader allows alg and kid to be absent because they normally
+// live in the per-recipient header and are unavailable before DecryptMulti.
+func parseMultiSharedHeader(source jose.Header) (Header, error) {
+	if _, exists := source.ExtraHeaders[headerCritical]; exists {
+		return Header{}, fmt.Errorf(
+			"%w: critical headers are not supported",
+			ErrMalformedToken,
+		)
+	}
+
+	encryption, err := headerString(source.ExtraHeaders, headerEncryption)
+	if err != nil {
+		return Header{}, err
+	}
+	typ, err := headerString(source.ExtraHeaders, jose.HeaderType)
+	if err != nil {
+		return Header{}, err
+	}
+	contentType, err := headerString(source.ExtraHeaders, jose.HeaderContentType)
+	if err != nil {
+		return Header{}, err
+	}
+	compression, err := headerString(source.ExtraHeaders, headerCompression)
 	if err != nil {
 		return Header{}, err
 	}
 
-	typ, err := headerString(
-		header.ExtraHeaders,
-		jose.HeaderType,
-		false,
-		maxTypeLength,
-	)
-	if err != nil {
-		return Header{}, err
-	}
-
-	contentType, err := headerString(
-		header.ExtraHeaders,
-		jose.HeaderContentType,
-		false,
-		maxContentTypeLength,
-	)
-	if err != nil {
-		return Header{}, err
-	}
-
-	compression, err := headerString(
-		header.ExtraHeaders,
-		headerCompression,
-		false,
-		maxAlgorithmLength,
-	)
-	if err != nil {
-		return Header{}, err
-	}
-
-	return Header{
-		Algorithm:    jose.KeyAlgorithm(header.Algorithm),
+	header := Header{
+		Algorithm:    jose.KeyAlgorithm(source.Algorithm),
 		Encryption:   jose.ContentEncryption(encryption),
 		Compression:  jose.CompressionAlgorithm(compression),
-		KeyID:        header.KeyID,
+		KeyID:        source.KeyID,
 		Type:         typ,
 		ContentType:  contentType,
-		ExtraHeaders: cloneExtraHeaders(header.ExtraHeaders),
-	}, nil
+		ExtraHeaders: cloneExtraHeaders(source.ExtraHeaders),
+	}
+
+	if err := header.validate(); err != nil {
+		return Header{}, err
+	}
+
+	return header, nil
 }
 
 func headerString(
 	header map[jose.HeaderKey]any,
 	name jose.HeaderKey,
-	required bool,
-	maxLength int,
 ) (string, error) {
 	value, exists := header[name]
 	if !exists {
-		if required {
-			return "", fmt.Errorf(
-				"%w: %s header is required",
-				ErrMalformedToken,
-				name,
-			)
-		}
-
 		return "", nil
 	}
 
 	text, ok := value.(string)
 	if !ok {
 		return "", fmt.Errorf(
-			"%w: %s header must be a string",
+			"%w: %s must be a string",
 			ErrMalformedToken,
 			name,
-		)
-	}
-
-	if err := validateHeaderValue(name, text, maxLength); err != nil {
-		return "", fmt.Errorf(
-			"%w: %w",
-			ErrMalformedToken,
-			err,
 		)
 	}
 
 	return text, nil
 }
 
-func cloneExtraHeaders(
-	headers map[jose.HeaderKey]any,
-) map[jose.HeaderKey]any {
+func validateHeaderValue(name jose.HeaderKey, value string, maxLength int) error {
+	if value == "" {
+		return fmt.Errorf(
+			"%s must not be empty",
+			name,
+		)
+	}
+
+	if len(value) > maxLength {
+		return fmt.Errorf(
+			"%s exceeds %d bytes",
+			name,
+			maxLength,
+		)
+	}
+
+	if !utf8.ValidString(value) {
+		return fmt.Errorf(
+			"%s is not valid UTF-8",
+			name,
+		)
+	}
+
+	return nil
+}
+
+func cloneExtraHeaders(headers map[jose.HeaderKey]any) map[jose.HeaderKey]any {
 	if len(headers) == 0 {
 		return nil
 	}

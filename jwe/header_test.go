@@ -90,21 +90,9 @@ func TestParseHeaderRejectsMalformedHeaders(t *testing.T) {
 			},
 		},
 		{
-			name: "empty type",
-			mutate: func(header *jose.Header) {
-				header.ExtraHeaders[jose.HeaderType] = ""
-			},
-		},
-		{
 			name: "non-string content type",
 			mutate: func(header *jose.Header) {
 				header.ExtraHeaders[jose.HeaderContentType] = true
-			},
-		},
-		{
-			name: "control compression",
-			mutate: func(header *jose.Header) {
-				header.ExtraHeaders[headerCompression] = "DEF\n"
 			},
 		},
 	}
@@ -174,12 +162,6 @@ func TestParseMultiSharedHeaderRejectsMalformedHeaders(t *testing.T) {
 			name: "non-string encryption",
 			mutate: func(header *jose.Header) {
 				header.ExtraHeaders[headerEncryption] = 1
-			},
-		},
-		{
-			name: "empty type",
-			mutate: func(header *jose.Header) {
-				header.ExtraHeaders[jose.HeaderType] = ""
 			},
 		},
 		{

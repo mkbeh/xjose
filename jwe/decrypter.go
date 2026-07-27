@@ -133,7 +133,14 @@ func (decrypter *Decrypter) Decrypt(ctx context.Context, raw string) ([]byte, er
 // DecryptToken decrypts and authenticates a compact JWE and returns its
 // protected header and plaintext.
 func (decrypter *Decrypter) DecryptToken(ctx context.Context, raw string) (Decrypted, error) {
-	if err := decrypter.validateDecryptInput(raw); err != nil {
+	if decrypter == nil || decrypter.resolver == nil {
+		return Decrypted{}, fmt.Errorf(
+			"%w: decrypter is uninitialized",
+			ErrInvalidConfig,
+		)
+	}
+
+	if err := validateRawToken(raw, decrypter.config.maxTokenSize); err != nil {
 		return Decrypted{}, err
 	}
 
@@ -175,43 +182,14 @@ func (decrypter *Decrypter) DecryptToken(ctx context.Context, raw string) (Decry
 		)
 	}
 
-	if len(plaintext) > decrypter.config.maxPlaintextSize {
-		return Decrypted{}, fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrPlaintextTooLarge,
-			len(plaintext),
-			decrypter.config.maxPlaintextSize,
-		)
+	if err := validatePlaintextSize(plaintext, decrypter.config.maxPlaintextSize); err != nil {
+		return Decrypted{}, err
 	}
 
 	return Decrypted{
 		Header:    header,
 		Plaintext: plaintext,
 	}, nil
-}
-
-func (decrypter *Decrypter) validateDecryptInput(raw string) error {
-	if decrypter == nil {
-		return fmt.Errorf(
-			"%w: decrypter is uninitialized",
-			ErrInvalidConfig,
-		)
-	}
-
-	if raw == "" {
-		return ErrMissingToken
-	}
-
-	if len(raw) > decrypter.config.maxTokenSize {
-		return fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrTokenTooLarge,
-			len(raw),
-			decrypter.config.maxTokenSize,
-		)
-	}
-
-	return nil
 }
 
 func (decrypter *Decrypter) validatePolicy(header Header) error {

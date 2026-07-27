@@ -61,7 +61,7 @@ func NewMultiEncrypter(
 	//
 	// go-jose also rejects dir and direct ECDH-ES because they cannot be
 	// used in multi-recipient mode.
-	if _, err := encrypter.createEncrypter(); err != nil {
+	if _, err := encrypter.buildEncrypter(); err != nil {
 		return nil, fmt.Errorf(
 			"%w: create multi-encrypter: %w",
 			ErrInvalidConfig,
@@ -94,26 +94,12 @@ func (encrypter *MultiEncrypter) encrypt(plaintext, authData []byte) (string, er
 		)
 	}
 
-	if len(plaintext) == 0 {
-		return "", ErrMissingPlaintext
+	if err := validatePlaintext(plaintext, encrypter.config.maxPlaintextSize); err != nil {
+		return "", err
 	}
 
-	if len(plaintext) > encrypter.config.maxPlaintextSize {
-		return "", fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrPlaintextTooLarge,
-			len(plaintext),
-			encrypter.config.maxPlaintextSize,
-		)
-	}
-
-	if len(authData) > encrypter.config.maxTokenSize {
-		return "", fmt.Errorf(
-			"%w: authenticated data is %d bytes, token limit is %d",
-			ErrTokenTooLarge,
-			len(authData),
-			encrypter.config.maxTokenSize,
-		)
+	if err := validateAuthDataSize(authData, encrypter.config.maxTokenSize); err != nil {
+		return "", err
 	}
 
 	// go-jose distinguishes nil AAD from an empty non-nil slice.
@@ -122,7 +108,7 @@ func (encrypter *MultiEncrypter) encrypt(plaintext, authData []byte) (string, er
 		authData = nil
 	}
 
-	backend, err := encrypter.createEncrypter()
+	backend, err := encrypter.buildEncrypter()
 	if err != nil {
 		return "", fmt.Errorf(
 			"%w: create multi-encrypter: %w",
@@ -142,19 +128,14 @@ func (encrypter *MultiEncrypter) encrypt(plaintext, authData []byte) (string, er
 
 	raw := object.FullSerialize()
 
-	if len(raw) > encrypter.config.maxTokenSize {
-		return "", fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrTokenTooLarge,
-			len(raw),
-			encrypter.config.maxTokenSize,
-		)
+	if err := validateRawTokenSize(raw, encrypter.config.maxTokenSize); err != nil {
+		return "", err
 	}
 
 	return raw, nil
 }
 
-func (encrypter *MultiEncrypter) createEncrypter() (jose.Encrypter, error) {
+func (encrypter *MultiEncrypter) buildEncrypter() (jose.Encrypter, error) {
 	options := &jose.EncrypterOptions{
 		Compression: encrypter.config.compression,
 	}

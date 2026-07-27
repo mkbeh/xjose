@@ -108,17 +108,8 @@ func (encrypter *Encrypter) Encrypt(plaintext []byte) (string, error) {
 		)
 	}
 
-	if len(plaintext) == 0 {
-		return "", ErrMissingPlaintext
-	}
-
-	if len(plaintext) > encrypter.config.maxPlaintextSize {
-		return "", fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrPlaintextTooLarge,
-			len(plaintext),
-			encrypter.config.maxPlaintextSize,
-		)
+	if err := validatePlaintext(plaintext, encrypter.config.maxPlaintextSize); err != nil {
+		return "", err
 	}
 
 	backend, err := newEncrypter(encrypter.recipient, encrypter.encryption, encrypter.config)
@@ -148,13 +139,8 @@ func (encrypter *Encrypter) Encrypt(plaintext []byte) (string, error) {
 		)
 	}
 
-	if len(raw) > encrypter.config.maxTokenSize {
-		return "", fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrTokenTooLarge,
-			len(raw),
-			encrypter.config.maxTokenSize,
-		)
+	if err := validateRawTokenSize(raw, encrypter.config.maxTokenSize); err != nil {
+		return "", err
 	}
 
 	return raw, nil

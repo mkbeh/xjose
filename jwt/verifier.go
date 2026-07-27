@@ -158,23 +158,6 @@ func (verifier *Verifier) resolveKey(
 	return key.key, nil
 }
 
-func validateRawToken(raw string, maxSize int) error {
-	if raw == "" {
-		return ErrMissingToken
-	}
-
-	if len(raw) > maxSize {
-		return fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrTokenTooLarge,
-			len(raw),
-			maxSize,
-		)
-	}
-
-	return nil
-}
-
 func (verifier *Verifier) validatePolicy(header Header, claims jwt.Claims) error {
 	if verifier.config.typ != "" && header.Type != verifier.config.typ {
 		return ErrUnexpectedType

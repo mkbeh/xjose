@@ -2,8 +2,6 @@ package jwe
 
 import (
 	"fmt"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -16,10 +14,6 @@ const (
 	// DefaultMaxPlaintextSize is the default maximum plaintext size accepted
 	// before encryption or returned after decryption.
 	DefaultMaxPlaintextSize = 16 << 10
-
-	maxAlgorithmLength   = 64
-	maxTypeLength        = 128
-	maxContentTypeLength = 128
 )
 
 type Option interface {
@@ -204,39 +198,4 @@ func makeConfig(options []Option) (config, error) {
 	}
 
 	return config, nil
-}
-
-func validateHeaderValue(name jose.HeaderKey, value string, maxLength int) error {
-	if value == "" {
-		return fmt.Errorf(
-			"%s must not be empty",
-			name,
-		)
-	}
-
-	if len(value) > maxLength {
-		return fmt.Errorf(
-			"%s exceeds %d bytes",
-			name,
-			maxLength,
-		)
-	}
-
-	if !utf8.ValidString(value) {
-		return fmt.Errorf(
-			"%s is not valid UTF-8",
-			name,
-		)
-	}
-
-	for _, character := range value {
-		if unicode.IsControl(character) {
-			return fmt.Errorf(
-				"%s contains control characters",
-				name,
-			)
-		}
-	}
-
-	return nil
 }

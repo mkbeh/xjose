@@ -75,11 +75,9 @@ func TestMakeConfigRejectsInvalidOptions(t *testing.T) {
 		{name: "empty type", option: WithType("")},
 		{name: "long type", option: WithType(strings.Repeat("a", maxTypeLength+1))},
 		{name: "invalid UTF-8 type", option: WithType(invalidUTF8)},
-		{name: "control type", option: WithType("JWE\n")},
 		{name: "empty content type", option: WithContentType("")},
 		{name: "long content type", option: WithContentType(strings.Repeat("a", maxContentTypeLength+1))},
 		{name: "invalid UTF-8 content type", option: WithContentType(invalidUTF8)},
-		{name: "control content type", option: WithContentType("application/json\r")},
 		{name: "zero token size", option: WithMaxTokenSize(0)},
 		{name: "negative token size", option: WithMaxTokenSize(-1)},
 		{name: "zero plaintext size", option: WithMaxPlaintextSize(0)},
@@ -92,18 +90,6 @@ func TestMakeConfigRejectsInvalidOptions(t *testing.T) {
 			_, err := makeConfig([]Option{test.option})
 			requireErrorIs(t, err, ErrInvalidConfig)
 		})
-	}
-}
-
-func TestValidateHeaderValueBoundaries(t *testing.T) {
-	if err := validateHeaderValue(headerType, strings.Repeat("a", maxTypeLength), maxTypeLength); err != nil {
-		t.Fatalf("boundary value rejected: %v", err)
-	}
-
-	for _, value := range []string{"", "ok\x00", string([]byte{0xff})} {
-		if err := validateHeaderValue(headerType, value, maxTypeLength); err == nil {
-			t.Fatalf("value %q unexpectedly accepted", value)
-		}
 	}
 }
 

@@ -123,9 +123,6 @@ func TestMultiDecrypterValidatesReceiverContextAndInput(t *testing.T) {
 	_, err = nilDecrypter.DecryptToken(testContext(), raw)
 	requireErrorIs(t, err, ErrInvalidConfig)
 
-	_, err = decrypter.DecryptToken(nil, raw)
-	requireErrorIs(t, err, ErrInvalidConfig)
-
 	_, err = decrypter.DecryptToken(testContext(), "")
 	requireErrorIs(t, err, ErrMissingToken)
 

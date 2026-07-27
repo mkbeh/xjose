@@ -3,14 +3,8 @@ package jwe
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	"github.com/go-jose/go-jose/v4"
-)
-
-const (
-	multiHeaderEncryption  = jose.HeaderKey("enc")
-	multiHeaderCompression = jose.HeaderKey("zip")
 )
 
 // MultiDecrypted contains the result of JWE JSON decryption.
@@ -122,7 +116,14 @@ func (decrypter *MultiDecrypter) Decrypt(ctx context.Context, raw string) ([]byt
 func (decrypter *MultiDecrypter) DecryptToken(ctx context.Context, raw string) (MultiDecrypted, error) {
 	var zero MultiDecrypted
 
-	if err := decrypter.validateRaw(ctx, raw); err != nil {
+	if decrypter == nil || decrypter.resolver == nil {
+		return zero, fmt.Errorf(
+			"%w: multi-decrypter is uninitialized",
+			ErrInvalidConfig,
+		)
+	}
+
+	if err := validateRawToken(raw, decrypter.config.maxTokenSize); err != nil {
 		return zero, err
 	}
 
@@ -164,16 +165,13 @@ func (decrypter *MultiDecrypter) DecryptToken(ctx context.Context, raw string) (
 	if err != nil {
 		return zero, err
 	}
+
 	if err := decrypter.validatePolicy(header, false); err != nil {
 		return zero, err
 	}
-	if len(plaintext) > decrypter.config.maxPlaintextSize {
-		return zero, fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrPlaintextTooLarge,
-			len(plaintext),
-			decrypter.config.maxPlaintextSize,
-		)
+
+	if err := validatePlaintextSize(plaintext, decrypter.config.maxPlaintextSize); err != nil {
+		return zero, err
 	}
 
 	return MultiDecrypted{
@@ -182,22 +180,6 @@ func (decrypter *MultiDecrypter) DecryptToken(ctx context.Context, raw string) (
 		Plaintext:      plaintext,
 		AuthData:       object.GetAuthData(),
 	}, nil
-}
-
-func (decrypter *MultiDecrypter) validateRaw(ctx context.Context, raw string) error {
-	if decrypter == nil {
-		return fmt.Errorf("%w: multi-decrypter is uninitialized", ErrInvalidConfig)
-	}
-	if ctx == nil {
-		return fmt.Errorf("%w: context is nil", ErrInvalidConfig)
-	}
-	if raw == "" {
-		return ErrMissingToken
-	}
-	if len(raw) > decrypter.config.maxTokenSize {
-		return fmt.Errorf("%w: got %d bytes, limit is %d", ErrTokenTooLarge, len(raw), decrypter.config.maxTokenSize)
-	}
-	return nil
 }
 
 func (decrypter *MultiDecrypter) validatePolicy(
@@ -232,35 +214,4 @@ func (decrypter *MultiDecrypter) validatePolicy(
 	}
 
 	return nil
-}
-
-// parseMultiSharedHeader allows alg and kid to be absent because they normally
-// live in the per-recipient header and are unavailable before DecryptMulti.
-func parseMultiSharedHeader(header jose.Header) (Header, error) {
-	encryption, err := headerString(header.ExtraHeaders, multiHeaderEncryption, true, maxAlgorithmLength)
-	if err != nil {
-		return Header{}, err
-	}
-	typ, err := headerString(header.ExtraHeaders, jose.HeaderType, false, maxTypeLength)
-	if err != nil {
-		return Header{}, err
-	}
-	contentType, err := headerString(header.ExtraHeaders, jose.HeaderContentType, false, maxContentTypeLength)
-	if err != nil {
-		return Header{}, err
-	}
-	compression, err := headerString(header.ExtraHeaders, multiHeaderCompression, false, maxAlgorithmLength)
-	if err != nil {
-		return Header{}, err
-	}
-
-	return Header{
-		Algorithm:    jose.KeyAlgorithm(header.Algorithm),
-		Encryption:   jose.ContentEncryption(encryption),
-		KeyID:        header.KeyID,
-		Type:         typ,
-		ContentType:  contentType,
-		Compression:  jose.CompressionAlgorithm(compression),
-		ExtraHeaders: maps.Clone(header.ExtraHeaders),
-	}, nil
 }
