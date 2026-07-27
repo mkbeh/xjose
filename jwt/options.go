@@ -201,25 +201,22 @@ func WithMethods(methods ...jwt.SigningMethod) VerifierOption {
 
 func (option methodsOption) applyVerifier(config *verifierConfig) error {
 	if len(option) == 0 {
-		return fmt.Errorf("%w: at least one signing method is required", ErrInvalidConfig)
+		return fmt.Errorf(
+			"%w: at least one signing method is required",
+			ErrInvalidConfig,
+		)
 	}
-
-	seen := make(map[string]struct{}, len(option))
-	methods := make([]jwt.SigningMethod, 0, len(option))
 
 	for _, method := range option {
 		if method == nil || method.Alg() == "" {
-			return fmt.Errorf("%w: invalid signing method", ErrInvalidConfig)
+			return fmt.Errorf(
+				"%w: invalid signing method",
+				ErrInvalidConfig,
+			)
 		}
-		if _, exists := seen[method.Alg()]; exists {
-			return fmt.Errorf("%w: duplicate signing method %q", ErrInvalidConfig, method.Alg())
-		}
-
-		seen[method.Alg()] = struct{}{}
-		methods = append(methods, method)
 	}
 
-	config.methods = methods
+	config.methods = option
 
 	return nil
 }

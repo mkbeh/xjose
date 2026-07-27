@@ -101,11 +101,7 @@ func ToVerificationKey(key Key, method gojwt.SigningMethod) (jwt.VerificationKey
 		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
 	}
 
-	return jwt.NewVerificationKey(
-		key.KeyID,
-		method,
-		key.Key,
-	)
+	return jwt.NewVerificationKey(key.KeyID, method, key.Key)
 }
 
 // ThumbprintID returns the base64url-encoded SHA-256 RFC 7638 thumbprint.

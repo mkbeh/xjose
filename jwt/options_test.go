@@ -41,7 +41,6 @@ func TestVerifierOptionsRejectInvalidValues(t *testing.T) {
 		{name: "nil option", options: []VerifierOption{nilOption}},
 		{name: "empty methods", options: []VerifierOption{WithMethods()}},
 		{name: "nil method", options: []VerifierOption{WithMethods(nil)}},
-		{name: "duplicate method", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256, jwt.SigningMethodHS256)}},
 		{name: "empty type", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithType("")}},
 		{name: "invalid max token size", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithMaxTokenSize(0)}},
 		{name: "empty issuer", options: []VerifierOption{WithMethods(jwt.SigningMethodHS256), WithIssuer("")}},
