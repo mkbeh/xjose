@@ -80,7 +80,7 @@ Each module has its own version, dependencies, and documentation.
 See the [examples](examples) directory for usage examples:
 
 | Module  | Examples                                                                                                          |
-|:-------:|:------------------------------------------------------------------------------------------------------------------|
+|:-------:|-------------------------------------------------------------------------------------------------------------------|
 | **JWT** | [HMAC Signing](examples/jwt_hmac)<br>[Asymmetric Signing](examples/jwt_asymmetric)                                |
 | **JWS** | [Compact JWS](examples/jws)<br>[Multiple Signatures](examples/jws_multi)<br>[Opaque Signing](examples/jws_opaque) |
 | **JWE** | [Compact JWE](examples/jwe)<br>[Multiple Recipients](examples/jwe_multi)                                          |
