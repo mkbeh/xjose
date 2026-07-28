@@ -60,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for module in jwt jws jwe jwk jwks; do
+          for module in jwt jws jwe jwk; do
             echo "::group::${module}"
 
             (

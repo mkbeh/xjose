@@ -1,11 +1,8 @@
-package jwks
+package jwk
 
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -21,21 +18,13 @@ import (
 	"github.com/mkbeh/xjose/jwt"
 )
 
-type keyFixture struct {
-	name       string
-	keyID      string
-	method     gojwt.SigningMethod
-	privateKey any
-	publicKey  any
-}
-
 type accessClaims struct {
 	UserID string `json:"user_id"`
 
 	gojwt.RegisteredClaims
 }
 
-func TestNew(t *testing.T) {
+func TestNewSet(t *testing.T) {
 	fixtures := asymmetricKeyFixtures(t)
 	keys := make([]Key, 0, len(fixtures))
 
@@ -48,7 +37,7 @@ func TestNew(t *testing.T) {
 		})
 	}
 
-	set, err := New(keys...)
+	set, err := NewSet(keys...)
 	requireNoError(t, err)
 
 	returned := set.Keys()
@@ -77,10 +66,10 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestNewAllowsSingleAnonymousKey(t *testing.T) {
+func TestNewSetAllowsSingleAnonymousKey(t *testing.T) {
 	fixture := asymmetricKeyFixtures(t)[0]
 
-	set, err := New(Key{
+	set, err := NewSet(Key{
 		Key:       fixture.publicKey,
 		Algorithm: fixture.method.Alg(),
 		Use:       keyUseSignature,
@@ -104,7 +93,7 @@ func TestNewAllowsSingleAnonymousKey(t *testing.T) {
 	}
 }
 
-func TestNewRejectsInvalidSets(t *testing.T) {
+func TestNewSetRejectsInvalidSets(t *testing.T) {
 	fixtures := asymmetricKeyFixtures(t)
 
 	privateKey := Key{
@@ -146,6 +135,7 @@ func TestNewRejectsInvalidSets(t *testing.T) {
 	}{
 		{name: "empty", keys: nil, want: jwt.ErrInvalidKey},
 		{name: "zero key", keys: []Key{{}}, want: jwt.ErrInvalidKey},
+		{name: "typed nil public key", keys: []Key{{Key: (*rsa.PublicKey)(nil)}}, want: jwt.ErrInvalidKey},
 		{name: "private key", keys: []Key{privateKey}, want: jwt.ErrInvalidKey},
 		{name: "symmetric key", keys: []Key{symmetricKey}, want: jwt.ErrInvalidKey},
 		{name: "anonymous in multi-key set", keys: []Key{anonymous, named}, want: jwt.ErrInvalidKey},
@@ -154,13 +144,13 @@ func TestNewRejectsInvalidSets(t *testing.T) {
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := New(testCase.keys...)
+			_, err := NewSet(testCase.keys...)
 			requireErrorIs(t, err, testCase.want)
 		})
 	}
 }
 
-func TestParse(t *testing.T) {
+func TestParseSet(t *testing.T) {
 	fixtures := asymmetricKeyFixtures(t)
 	original := make([]Key, 0, len(fixtures))
 
@@ -176,7 +166,7 @@ func TestParse(t *testing.T) {
 	data, err := json.Marshal(jose.JSONWebKeySet{Keys: original})
 	requireNoError(t, err)
 
-	set, err := Parse(data)
+	set, err := ParseSet(data)
 	requireNoError(t, err)
 
 	parsed := set.Keys()
@@ -194,7 +184,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestParseRejectsInvalidDocuments(t *testing.T) {
+func TestParseSetRejectsInvalidDocuments(t *testing.T) {
 	fixture := asymmetricKeyFixtures(t)[0]
 
 	privateData := marshalSet(t, []Key{{
@@ -228,37 +218,37 @@ func TestParseRejectsInvalidDocuments(t *testing.T) {
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := Parse(testCase.data)
+			_, err := ParseSet(testCase.data)
 			requireErrorIs(t, err, testCase.want)
 		})
 	}
 }
 
-func TestParseWithLimit(t *testing.T) {
+func TestParseSetWithLimit(t *testing.T) {
 	fixture := asymmetricKeyFixtures(t)[0]
 	keys := makeKeys(fixture, 3)
 	data := marshalSet(t, keys)
 
-	set, err := ParseWithLimit(data, len(keys))
+	set, err := ParseSetWithLimit(data, len(keys))
 	requireNoError(t, err)
 	if len(set.Keys()) != len(keys) {
 		t.Fatalf("parsed key count = %d, want %d", len(set.Keys()), len(keys))
 	}
 
-	_, err = ParseWithLimit(data, len(keys)-1)
+	_, err = ParseSetWithLimit(data, len(keys)-1)
 	requireErrorIs(t, err, jwt.ErrInvalidKey)
 
 	for _, maxKeys := range []int{0, -1} {
-		_, err = ParseWithLimit(data, maxKeys)
+		_, err = ParseSetWithLimit(data, maxKeys)
 		requireErrorIs(t, err, jwt.ErrInvalidConfig)
 	}
 }
 
-func TestParseUsesDefaultMaxKeys(t *testing.T) {
+func TestParseSetUsesDefaultMaxSetKeys(t *testing.T) {
 	fixture := asymmetricKeyFixtures(t)[0]
-	data := marshalSet(t, makeKeys(fixture, DefaultMaxKeys+1))
+	data := marshalSet(t, makeKeys(fixture, DefaultMaxSetKeys+1))
 
-	_, err := Parse(data)
+	_, err := ParseSet(data)
 	requireErrorIs(t, err, jwt.ErrInvalidKey)
 }
 
@@ -275,7 +265,7 @@ func TestResolve(t *testing.T) {
 		})
 	}
 
-	set, err := New(keys...)
+	set, err := NewSet(keys...)
 	requireNoError(t, err)
 
 	for _, fixture := range fixtures {
@@ -311,7 +301,7 @@ func TestResolveErrors(t *testing.T) {
 		Algorithm: fixture.method.Alg(),
 		Use:       keyUseSignature,
 	}
-	set, err := New(named)
+	set, err := NewSet(named)
 	requireNoError(t, err)
 
 	var nilSet *Set
@@ -350,7 +340,7 @@ func TestResolveValidatesJWKPolicy(t *testing.T) {
 	fixture := asymmetricKeyFixtures(t)[0]
 
 	t.Run("empty optional metadata", func(t *testing.T) {
-		set, err := New(Key{Key: fixture.publicKey})
+		set, err := NewSet(Key{Key: fixture.publicKey})
 		requireNoError(t, err)
 
 		resolved, err := set.Resolve(context.Background(), jwt.Header{
@@ -368,7 +358,7 @@ func TestResolveValidatesJWKPolicy(t *testing.T) {
 	})
 
 	t.Run("encryption use", func(t *testing.T) {
-		set, err := New(Key{
+		set, err := NewSet(Key{
 			Key:       fixture.publicKey,
 			Algorithm: fixture.method.Alg(),
 			Use:       "enc",
@@ -382,7 +372,7 @@ func TestResolveValidatesJWKPolicy(t *testing.T) {
 	})
 
 	t.Run("unknown algorithm", func(t *testing.T) {
-		set, err := New(Key{Key: fixture.publicKey})
+		set, err := NewSet(Key{Key: fixture.publicKey})
 		requireNoError(t, err)
 
 		_, err = set.Resolve(context.Background(), jwt.Header{
@@ -409,7 +399,7 @@ func TestKeysReturnsSequenceCopy(t *testing.T) {
 		},
 	}
 
-	set, err := New(input...)
+	set, err := NewSet(input...)
 	requireNoError(t, err)
 
 	input[0].KeyID = "changed-input"
@@ -440,11 +430,6 @@ func TestNilSetAccessors(t *testing.T) {
 	}
 }
 
-func TestFromVerificationKeyRejectsUninitializedKey(t *testing.T) {
-	_, err := fromVerificationKey(jwt.VerificationKey{})
-	requireErrorIs(t, err, jwt.ErrInvalidKey)
-}
-
 func TestMarshalJSON(t *testing.T) {
 	fixtures := asymmetricKeyFixtures(t)
 	keys := []Key{
@@ -462,7 +447,7 @@ func TestMarshalJSON(t *testing.T) {
 		},
 	}
 
-	set, err := New(keys...)
+	set, err := NewSet(keys...)
 	requireNoError(t, err)
 
 	data, err := json.Marshal(set)
@@ -484,7 +469,7 @@ func TestMarshalJSON(t *testing.T) {
 		}
 	}
 
-	roundTrip, err := Parse(data)
+	roundTrip, err := ParseSet(data)
 	requireNoError(t, err)
 	if len(roundTrip.Keys()) != len(keys) {
 		t.Fatalf("round-trip key count = %d, want %d", len(roundTrip.Keys()), len(keys))
@@ -576,7 +561,7 @@ func TestSetEndToEndVerifier(t *testing.T) {
 			Use:       keyUseSignature,
 		},
 	}
-	set, err := New(keys...)
+	set, err := NewSet(keys...)
 	requireNoError(t, err)
 
 	signingKey, err := jwt.NewSigningKey(
@@ -634,7 +619,7 @@ func TestSetConcurrentUse(t *testing.T) {
 		})
 	}
 
-	set, err := New(keys...)
+	set, err := NewSet(keys...)
 	requireNoError(t, err)
 
 	const goroutines = 32
@@ -689,50 +674,7 @@ func TestSetConcurrentUse(t *testing.T) {
 	}
 }
 
-func asymmetricKeyFixtures(t testing.TB) []keyFixture {
-	t.Helper()
-
-	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("rsa.GenerateKey() error = %v", err)
-	}
-
-	ecdsaPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("ecdsa.GenerateKey() error = %v", err)
-	}
-
-	ed25519PublicKey, ed25519PrivateKey, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("ed25519.GenerateKey() error = %v", err)
-	}
-
-	return []keyFixture{
-		{
-			name:       "RSA",
-			keyID:      "rsa-2026-07",
-			method:     gojwt.SigningMethodPS256,
-			privateKey: rsaPrivateKey,
-			publicKey:  &rsaPrivateKey.PublicKey,
-		},
-		{
-			name:       "ECDSA",
-			keyID:      "ecdsa-2026-07",
-			method:     gojwt.SigningMethodES256,
-			privateKey: ecdsaPrivateKey,
-			publicKey:  &ecdsaPrivateKey.PublicKey,
-		},
-		{
-			name:       "Ed25519",
-			keyID:      "ed25519-2026-07",
-			method:     gojwt.SigningMethodEdDSA,
-			privateKey: ed25519PrivateKey,
-			publicKey:  ed25519PublicKey,
-		},
-	}
-}
-
-func makeKeys(fixture keyFixture, count int) []Key {
+func makeKeys(fixture asymmetricKeyFixture, count int) []Key {
 	keys := make([]Key, count)
 	for index := range keys {
 		keys[index] = Key{
@@ -754,20 +696,4 @@ func marshalSet(t testing.TB, keys []Key) []byte {
 	}
 
 	return data
-}
-
-func requireNoError(t testing.TB, err error) {
-	t.Helper()
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func requireErrorIs(t testing.TB, err, target error) {
-	t.Helper()
-
-	if !errors.Is(err, target) {
-		t.Fatalf("error = %v, want errors.Is(_, %v)", err, target)
-	}
 }

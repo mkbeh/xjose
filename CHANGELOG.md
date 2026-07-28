@@ -77,40 +77,22 @@ Web Encryption serializations.
 
 ## jwk/v0.2.0
 
-Initial release of the `jwk` module, providing helpers for parsing, validating, exporting, and identifying public JSON
-Web Keys.
+Initial release of the `jwk` module, providing helpers for parsing, validating, exporting, identifying, publishing, and
+resolving public JSON Web Keys and JWK Sets.
 
 ### Added
 
 * **Public-Key Validation:** Rejects private, symmetric, malformed, empty, and incomplete key material during validated
-  JWK parsing.
-* **JWT Integration:** Converts public JWK values to and from algorithm-bound `jwt.VerificationKey` configurations.
-* **Metadata Constraints:** Validates compatibility between key material, declared algorithm (`alg`), signature use
-  (`use`), and supported key operations.
-* **RFC 7638 Thumbprints:** Generates deterministic Base64URL-encoded SHA-256 thumbprints and identifiers from public
-  key material.
-* **Standard Interoperability:** Uses the upstream `jose.JSONWebKey` representation and integrates with Go's standard
-  `encoding/json` package.
-* **Resource Limits:** Provides configurable limits for serialized JWK input.
-* **Typed Errors:** Provides dedicated errors for malformed, unsupported, private, symmetric, and otherwise invalid key
-  material.
-
-## jwks/v0.2.0
-
-Initial release of the `jwks` module, providing helpers for parsing, publishing, and resolving public JSON Web Key Sets.
-
-### Added
-
-* **Validated Key Sets:** Rejects empty sets, private or symmetric keys, duplicate key IDs, and anonymous keys in
-  multi-key configurations.
-* **JWT Integration:** Implements `jwt.KeyResolver` through `Set`, allowing validated key sets to be passed directly to
-  JWT verifiers.
-* **Deterministic Key Selection:** Resolves named keys using the protected `kid` header and supports a single anonymous
-  key when the token omits `kid`.
+  JWK and JWK Set construction and parsing.
+* **JWT Integration:** Converts public JWK values to and from algorithm-bound `jwt.VerificationKey` configurations and
+  implements `jwt.KeyResolver` through validated `Set` values.
 * **Metadata Constraints:** Validates compatibility between requested algorithms, declared key algorithm (`alg`), and
-  signature use (`use`) during resolution.
-* **Key Rotation:** Publishes current and previous verification keys together in a single validated in-memory set.
-* **Bounded Parsing:** Provides configurable limits for the number of keys accepted from a JWKS document.
-* **Standard Serialization:** Marshals validated key sets as standard `{"keys":[...]}` JWKS documents.
-* **Typed Errors:** Provides dedicated errors for malformed sets, missing keys, duplicate identifiers, ambiguous
-  resolution, and unsupported key material.
+  signature use (`use`) during conversion and resolution.
+* **Deterministic Key Selection:** Resolves named keys using the protected `kid` header and supports a single anonymous
+  key when a token omits `kid`.
+* **Validated Key Sets:** Rejects empty sets, duplicate key IDs, and anonymous keys in multi-key configurations.
+* **Key Rotation:** Publishes current and previous verification keys together in a validated JWK Set.
+* **RFC 7638 Thumbprints:** Generates deterministic Base64URL-encoded SHA-256 thumbprints from public key material.
+* **Bounded Set Parsing:** Provides configurable limits for the number of keys accepted from a JWK Set document.
+* **Standard Interoperability:** Uses the upstream `jose.JSONWebKey` representation and serializes sets as standard
+  `{"keys":[...]}` documents.

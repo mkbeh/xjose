@@ -1,4 +1,4 @@
-package jwks
+package jwk
 
 import (
 	"context"
@@ -11,16 +11,11 @@ import (
 )
 
 const (
-	// DefaultMaxKeys is the default maximum number of keys parsed from a JWKS document.
-	DefaultMaxKeys = 100
-
-	keyUseSignature = "sig"
+	// DefaultMaxSetKeys is the default maximum number of keys parsed from a JWK Set document.
+	DefaultMaxSetKeys = 100
 )
 
-// Key represents a JSON Web Key.
-type Key = jose.JSONWebKey
-
-// Set is a public JWK Set that implements xjwt.KeyResolver.
+// Set is a public JWK Set that implements jwt.KeyResolver.
 //
 // Set copies the JWK sequence. The key objects stored in individual entries
 // must be treated as immutable.
@@ -33,18 +28,18 @@ type Set struct {
 
 var _ jwt.KeyResolver = (*Set)(nil)
 
-// New creates a JWK Set from trusted in-memory public keys.
-func New(keys ...Key) (*Set, error) {
+// NewSet creates a JWK Set from trusted in-memory public keys.
+func NewSet(keys ...Key) (*Set, error) {
 	return newSet(keys)
 }
 
-// Parse parses a JWK Set using DefaultMaxKeys.
-func Parse(data []byte) (*Set, error) {
-	return ParseWithLimit(data, DefaultMaxKeys)
+// ParseSet parses a JWK Set using DefaultMaxSetKeys.
+func ParseSet(data []byte) (*Set, error) {
+	return ParseSetWithLimit(data, DefaultMaxSetKeys)
 }
 
-// ParseWithLimit parses a JWK Set and limits the number of accepted keys.
-func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
+// ParseSetWithLimit parses a JWK Set and limits the number of accepted keys.
+func ParseSetWithLimit(data []byte, maxKeys int) (*Set, error) {
 	if maxKeys <= 0 {
 		return nil, fmt.Errorf(
 			"%w: maximum key count must be positive",
@@ -56,7 +51,7 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 
 	if err := json.Unmarshal(data, &document); err != nil {
 		return nil, fmt.Errorf(
-			"%w: parse JWKS: %w",
+			"%w: parse JWK Set: %w",
 			jwt.ErrInvalidKey,
 			err,
 		)
@@ -64,7 +59,7 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 
 	if len(document.Keys) > maxKeys {
 		return nil, fmt.Errorf(
-			"%w: JWKS contains %d keys, limit is %d",
+			"%w: JWK Set contains %d keys, limit is %d",
 			jwt.ErrInvalidKey,
 			len(document.Keys),
 			maxKeys,
@@ -74,7 +69,7 @@ func ParseWithLimit(data []byte, maxKeys int) (*Set, error) {
 	return newSet(document.Keys)
 }
 
-// FromStaticKeySet exports an xjwt verification-key set as a public JWK Set.
+// FromStaticKeySet exports a JWT verification-key set as a public JWK Set.
 //
 // Symmetric verification keys cannot be exported as public JWKs.
 func FromStaticKeySet(keySet *jwt.StaticKeySet) (*Set, error) {
@@ -89,7 +84,7 @@ func FromStaticKeySet(keySet *jwt.StaticKeySet) (*Set, error) {
 	keys := make([]Key, 0, len(verificationKeys))
 
 	for index, verificationKey := range verificationKeys {
-		key, err := fromVerificationKey(verificationKey)
+		key, err := FromVerificationKey(verificationKey)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"verification key %d: %w",
@@ -101,22 +96,26 @@ func FromStaticKeySet(keySet *jwt.StaticKeySet) (*Set, error) {
 		keys = append(keys, key)
 	}
 
-	return New(keys...)
+	return NewSet(keys...)
 }
 
 func newSet(keys []Key) (*Set, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf(
-			"%w: JWKS contains no keys",
+			"%w: JWK Set contains no keys",
 			jwt.ErrInvalidKey,
 		)
 	}
 
-	ownedKeys := append([]Key(nil), keys...)
+	// Copy the key sequence so later slice mutations by the caller
+	// cannot change the set.
+	ownedKeys := make([]Key, len(keys))
+	copy(ownedKeys, keys)
+
 	keyByID := make(map[string]int, len(ownedKeys))
 
 	for index, key := range ownedKeys {
-		if err := validatePublicKey(key); err != nil {
+		if err := Validate(key); err != nil {
 			return nil, fmt.Errorf(
 				"JWK %d: %w",
 				index,
@@ -124,15 +123,17 @@ func newSet(keys []Key) (*Set, error) {
 			)
 		}
 
-		if len(ownedKeys) > 1 && key.KeyID == "" {
-			return nil, fmt.Errorf(
-				"%w: JWK %d has no key ID",
-				jwt.ErrInvalidKey,
-				index,
-			)
-		}
-
+		// A single anonymous key is allowed. Multiple keys require
+		// non-empty IDs for deterministic resolution.
 		if key.KeyID == "" {
+			if len(ownedKeys) > 1 {
+				return nil, fmt.Errorf(
+					"%w: JWK %d has no key ID",
+					jwt.ErrInvalidKey,
+					index,
+				)
+			}
+
 			continue
 		}
 
@@ -158,7 +159,7 @@ func newSet(keys []Key) (*Set, error) {
 func (s *Set) Resolve(_ context.Context, header jwt.Header) (jwt.VerificationKey, error) {
 	if s == nil || len(s.keys) == 0 {
 		return jwt.VerificationKey{}, fmt.Errorf(
-			"%w: JWKS is uninitialized",
+			"%w: JWK Set is uninitialized",
 			jwt.ErrInvalidConfig,
 		)
 	}
@@ -168,7 +169,12 @@ func (s *Set) Resolve(_ context.Context, header jwt.Header) (jwt.VerificationKey
 		return jwt.VerificationKey{}, err
 	}
 
-	return toVerificationKey(key, header.Algorithm)
+	method := gojwt.GetSigningMethod(header.Algorithm)
+	if method == nil {
+		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
+	}
+
+	return ToVerificationKey(key, method)
 }
 
 func (s *Set) resolveKey(keyID string) (Key, error) {
@@ -190,76 +196,6 @@ func (s *Set) resolveKey(keyID string) (Key, error) {
 	}
 
 	return s.keys[index], nil
-}
-
-func toVerificationKey(key Key, algorithm string) (jwt.VerificationKey, error) {
-	if key.Use != "" && key.Use != keyUseSignature {
-		return jwt.VerificationKey{}, fmt.Errorf(
-			"%w: JWK use %q does not permit signature verification",
-			jwt.ErrInvalidKey,
-			key.Use,
-		)
-	}
-
-	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
-	}
-
-	method := gojwt.GetSigningMethod(algorithm)
-	if method == nil {
-		return jwt.VerificationKey{}, jwt.ErrUnexpectedAlgorithm
-	}
-
-	return jwt.NewVerificationKey(key.KeyID, method, key.Key)
-}
-
-func fromVerificationKey(key jwt.VerificationKey) (Key, error) {
-	method := key.Method()
-	if method == nil {
-		return Key{}, fmt.Errorf(
-			"%w: verification key is uninitialized",
-			jwt.ErrInvalidKey,
-		)
-	}
-
-	raw := key.Key()
-	if raw == nil {
-		return Key{}, fmt.Errorf(
-			"%w: verification key is uninitialized",
-			jwt.ErrInvalidKey,
-		)
-	}
-
-	if _, symmetric := raw.([]byte); symmetric {
-		return Key{}, fmt.Errorf(
-			"%w: symmetric keys cannot be exported as public JWKs",
-			jwt.ErrInvalidKey,
-		)
-	}
-
-	result := Key{
-		Key:       raw,
-		KeyID:     key.ID(),
-		Algorithm: method.Alg(),
-		Use:       keyUseSignature,
-	}
-
-	if err := validatePublicKey(result); err != nil {
-		return Key{}, err
-	}
-
-	return result, nil
-}
-
-func validatePublicKey(key Key) error {
-	if !key.Valid() || !key.IsPublic() {
-		return fmt.Errorf(
-			"%w: JWK must contain a valid public key",
-			jwt.ErrInvalidKey,
-		)
-	}
-
-	return nil
 }
 
 // Keys returns a shallow copy of the JWK sequence.

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjose/jwks"
+	"github.com/mkbeh/xjose/jwk"
 	"github.com/mkbeh/xjose/jwt"
 )
 
@@ -65,7 +65,7 @@ func main() {
 	}
 
 	// Export public verification keys as JWKS and parse the published document.
-	publicKeySet, err := jwks.FromStaticKeySet(verificationKeySet)
+	publicKeySet, err := jwk.FromStaticKeySet(verificationKeySet)
 	if err != nil {
 		log.Fatalf("export JWKS: %v", err)
 	}
@@ -75,7 +75,7 @@ func main() {
 		log.Fatalf("marshal JWKS: %v", err)
 	}
 
-	parsedKeySet, err := jwks.Parse(jwksJSON)
+	parsedKeySet, err := jwk.ParseSet(jwksJSON)
 	if err != nil {
 		log.Fatalf("parse JWKS: %v", err)
 	}

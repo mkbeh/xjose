@@ -1,15 +1,17 @@
-// Package jwk provides helpers for parsing, exporting, and identifying public
-// JSON Web Keys.
+// Package jwk provides helpers for validating, parsing, exporting, identifying,
+// publishing, and resolving public JSON Web Keys and JWK Sets.
 //
 // The package accepts public asymmetric keys only. It validates JWK structure,
 // converts keys to and from algorithm-bound JWT verification keys, enforces
-// compatible algorithm and key-use metadata, and calculates RFC 7638
-// SHA-256 thumbprint identifiers.
+// compatible algorithm and key-use metadata, and calculates RFC 7638 SHA-256
+// thumbprint identifiers.
 //
-// [Parse] should be used for externally supplied JWK documents because direct
-// JSON unmarshalling into [Key] bypasses the package's public-key validation.
+// [Parse] validates a single externally supplied JWK document. [ParseSet] and
+// [ParseSetWithLimit] validate JWK Set documents, enforce deterministic key-ID
+// selection, and return a [Set] that implements jwt.KeyResolver.
 //
-// Successful parsing establishes only that the JWK contains valid public key
-// material. Trust in the key source, issuer, and intended purpose remains the
-// responsibility of the application.
+// The package performs no network requests, caching, refreshes, or retries.
+// Successful validation establishes only that a document contains valid public
+// key material. Trust in the key source, issuer, and intended purpose remains
+// the responsibility of the application.
 package jwk

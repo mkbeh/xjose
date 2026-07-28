@@ -4,25 +4,27 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/mkbeh/xjose/jwk.svg)](https://pkg.go.dev/github.com/mkbeh/xjose/jwk)
 [![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg?flag=jwk)](https://codecov.io/gh/mkbeh/xjose)
 
-Secure helpers for parsing, exporting, and identifying public JSON Web Keys (JWKs) in Go.
+Public JWK and JWK Set support for Go.
 
 The `jwk` module builds on [go-jose](https://github.com/go-jose/go-jose) and integrates public JWKs with the
-[`jwt`](../jwt) module. It adds public-key validation, typed conversion to and from `jwt.VerificationKey`, metadata
-constraints, and stable RFC 7638 thumbprint identifiers.
+[`jwt`](../jwt) module. It supports parsing and validating public keys, converting between JWKs and algorithm-bound
+`jwt.VerificationKey` values, deterministic JWK Set resolution, and RFC 7638 thumbprint identifiers.
 
-The module works exclusively with public asymmetric keys. Private and symmetric key material is rejected by its
-validated parsing and conversion functions.
-
-For a complete runnable example, see the [examples](../examples) directory.
+For complete runnable workflows, see the [examples](../examples) directory.
 
 ## Features
 
-* **Public-key validation:** Reject private, symmetric, malformed, empty, or incomplete key material during validated
-  JWK parsing.
-* **JWT integration:** Convert public JWKs to and from algorithm-bound `jwt.VerificationKey` values.
-* **Metadata constraints:** Validate compatible `alg` and signature `use` values when constructing a verification key.
-* **RFC 7638 thumbprints:** Generate deterministic, Base64URL-encoded SHA-256 identifiers from public key material.
-* **Standard interoperability:** Use the upstream `jose.JSONWebKey` representation with Go's `encoding/json` package.
+* **JWK and JWK Set operations:** Parse, construct, inspect, and serialize individual public JWKs and standard
+  `{"keys":[...]}` documents.
+* **JWT integration:** Convert between public JWKs and algorithm-bound `jwt.VerificationKey` values, and use JWK Sets as
+  `jwt.KeyResolver` implementations.
+* **Key resolution:** Select named keys by protected `kid`, or use a single anonymous key for tokens without a key ID.
+* **Public-key export:** Convert trusted verification keys into public JWKs and JWK Sets without exporting private or
+  symmetric key material.
+* **Metadata validation:** Enforce compatible JWK `alg` and `use` values when converting keys for signature
+  verification.
+* **RFC 7638 thumbprints:** Generate Base64URL-encoded SHA-256 thumbprints from public key material.
+* **Key rotation:** Publish active and previous verification keys in the same JWK Set.
 
 ## Installation
 
@@ -107,107 +109,205 @@ log.Printf(
 package:
 
 ```go
-data, err := json.Marshal(key)
+data, _ := json.Marshal(key)
 ```
 
-Use `jwk.Parse` when reading JWK documents from external or otherwise untrusted sources:
+Use `jwk.Parse` for externally supplied JWK documents:
 
 ```go
-key, err := jwk.Parse(data)
+key, _ := jwk.Parse(data)
 ```
 
-`Parse` validates that the document contains supported public asymmetric key material. It rejects malformed JSON, empty
-keys, private keys, and symmetric secrets.
+`Parse` decodes the document and validates that it contains supported public asymmetric key material. Malformed JSON,
+empty or incomplete keys, private keys, and symmetric secrets are rejected.
 
 > [!IMPORTANT]
 > Directly unmarshalling JSON into `jwk.Key` bypasses the module's public-key validation. Use `jwk.Parse` for externally
-> supplied JWK documents.
+> supplied documents.
 
-Optional metadata such as `kid`, `alg`, and `use` is preserved during parsing. These fields constrain how a key may be
-used, but do not establish trust by themselves. Compatibility with a specific signing method and verification purpose is
-validated when the JWK is converted to `jwt.VerificationKey`.
+Optional metadata such as `kid`, `alg`, and `use` is preserved during parsing but does not establish trust by itself.
+When the JWK is converted to `jwt.VerificationKey`, its key material and metadata are validated against the signing
+method selected through trusted application configuration.
 
 ## JWT Verification Integration
 
-The module converts public JWKs to and from algorithm-bound verification keys used by the [`jwt`](../jwt) module.
+The module converts between public JWKs and algorithm-bound verification keys used by the [`jwt`](../jwt) module.
 
 ### Exporting a Verification Key
 
 Use `FromVerificationKey` to export an asymmetric `jwt.VerificationKey` as a public JWK:
 
 ```go
-key, err := jwk.FromVerificationKey(verificationKey)
+key, _ := jwk.FromVerificationKey(verificationKey)
 ```
 
 The resulting JWK contains:
 
 * public key material only;
-* `kid` derived from the verification key ID;
+* `kid` copied from the verification key ID;
 * `alg` derived from the bound signing method;
 * `use` set to `"sig"`.
 
-HMAC verification keys cannot be exported because their verification material is the shared secret itself, not a
+HMAC verification keys cannot be exported because their verification material is the shared secret rather than a
 separate public key.
 
 ### Creating a Verification Key
 
-Use `ToVerificationKey` to bind a parsed public JWK to an expected signing method:
+Use `ToVerificationKey` to convert a public JWK into a verification key bound to an explicitly selected signing method:
 
+<!-- @formatter:off -->
 ```go
-verificationKey, err := jwk.ToVerificationKey(key, gojwt.SigningMethodPS256)
+verificationKey, _ := jwk.ToVerificationKey(
+	key,
+	gojwt.SigningMethodPS256,
+)
 ```
+<!-- @formatter:on -->
 
-The signing method is supplied independently through trusted application configuration. The conversion validates that:
+The signing method is supplied independently through trusted application configuration. The conversion verifies that:
 
 * the public key material is compatible with the selected signing method;
 * `alg`, when present, matches the selected method;
 * `use`, when present, permits signature verification.
 
-The `kid`, `alg`, and `use` fields may be omitted. Missing metadata does not replace key validation or the explicit
-algorithm selected by the application.
+The `kid`, `alg`, and `use` fields are optional. When present, they are preserved or enforced as constraints; they do
+not establish trust or select the verification algorithm.
 
 > [!IMPORTANT]
-> Treat the JWK `alg` field as an optional constraint, not as an instruction to choose a verification algorithm. Always
-> select the expected signing method through trusted configuration.
+> Treat the JWK `alg` field as an optional constraint, not as an instruction. Select the expected signing method through
+> trusted application configuration.
+
+## JWK Sets
+
+A `Set` represents a validated JSON Web Key Set containing public asymmetric keys. It can be constructed from trusted
+in-memory JWKs, parsed from a standard `{"keys":[...]}` document, serialized with `encoding/json`, or used directly as a
+`jwt.KeyResolver`.
+
+### Constructing a Set
+
+Use `NewSet` when the public JWKs are already available in memory:
+
+```go
+set, _ := jwk.NewSet(currentKey, previousKey)
+```
+
+The set copies the JWK sequence. The key values stored in its entries must be treated as immutable after construction.
+
+A set containing multiple keys requires every key to have a unique, non-empty `kid`. A single key may omit `kid`, in
+which case it can resolve only tokens that also omit the key ID.
+
+To export an existing `jwt.StaticKeySet` as public JWKs:
+
+```go
+set, _ := jwk.FromStaticKeySet(keySet)
+```
+
+Only asymmetric verification keys can be exported. HMAC keys are rejected because their verification material is the
+shared secret itself.
+
+### Parsing and Serialization
+
+Use `ParseSet` when reading a JWK Set document from an external source:
+
+```go
+set, _ := jwk.ParseSet(data)
+```
+
+Parsing validates every key and rejects empty sets, private or symmetric key material, missing key IDs in multi-key
+sets, and duplicate key IDs.
+
+Use `ParseSetWithLimit` to place an explicit bound on the number of accepted keys:
+
+```go
+set, _ := jwk.ParseSetWithLimit(data, 100)
+```
+
+A validated set can be serialized with `encoding/json`:
+
+```go
+data, _ := json.Marshal(set)
+```
+
+`Keys` returns a shallow copy of the JWK sequence:
+
+```go
+keys := set.Keys()
+```
+
+The returned slice may be modified independently, but the JWK values it contains must continue to be treated as
+immutable.
+
+### JWT Key Resolution
+
+`Set` implements `jwt.KeyResolver` and can be passed directly to `jwt.NewVerifier`:
+
+<!-- @formatter:off -->
+```go
+set, _ := jwk.ParseSet(data)
+
+verifier, _ := jwt.NewVerifier(
+	set,
+	jwt.WithMethods(gojwt.SigningMethodPS256),
+)
+
+claims := new(AccessClaims)
+header, _ := verifier.VerifyToken(ctx, token, claims)
+```
+<!-- @formatter:on -->
+
+For a named set, the protected JWT `kid` header must exactly match one of the set entries. Tokens with a missing or
+unknown key ID are rejected.
+
+A set containing one anonymous key accepts only tokens without `kid`. It does not use that key as a fallback for tokens
+containing an unknown key ID.
+
+After selecting a JWK, the resolver validates its `alg` and `use` metadata against the token algorithm and returns an
+algorithm-bound `jwt.VerificationKey`.
+
+> [!IMPORTANT]
+> The token `kid` header is an untrusted lookup value. It selects a candidate only within the already trusted JWK Set;
+> it must not determine the key source or be used as authenticated metadata before verification succeeds.
 
 ## Thumbprints
 
-`ThumbprintID` calculates an RFC 7638 SHA-256 thumbprint and returns it as an unpadded Base64URL string:
+`ThumbprintID` computes an RFC 7638 SHA-256 thumbprint and returns it as an unpadded Base64URL-encoded string:
 
 ```go
-thumbprint, err := jwk.ThumbprintID(key)
+thumbprint, _ := jwk.ThumbprintID(key)
 ```
 
-The thumbprint is derived only from the canonical public key members. Metadata such as `kid`, `alg`, and `use` does not
-affect the result, so different JWK representations of the same public key produce the same identifier.
+The thumbprint is derived from the canonical public key members only. Metadata such as `kid`, `alg`, and `use` is
+excluded, so JWKs containing the same public key material produce the same thumbprint regardless of metadata
+differences.
 
-Thumbprints are useful for:
+Thumbprints can be used to:
 
-* generating deterministic key IDs;
-* detecting duplicate public keys;
-* comparing key material across JWK documents and metadata changes.
+* generate deterministic key identifiers;
+* detect duplicate public keys;
+* compare key material across JWK documents.
 
 > [!IMPORTANT]
-> A matching thumbprint identifies the same public key material, but does not establish trust, ownership, issuer
-> association, or authorization for a particular purpose. Validate the key source and intended usage independently.
+> A thumbprint identifies public key material, not its owner, issuer, source, or permitted usage. Authenticate the key
+> source and apply the intended usage policy independently.
 
 ## Security Considerations
 
-The module validates public JWK structure and metadata compatibility, but the application remains responsible for the
-overall key trust model:
+The module validates public key material and JWK metadata, but the application remains responsible for key provenance,
+usage policy, and lifecycle management:
 
-* **Trust the key source:** A structurally valid JWK may still belong to an attacker. Accept keys only from
+* **Authenticate key sources:** A structurally valid JWK may still be controlled by an attacker. Obtain keys only from
   application-configured sources delivered through authenticated and integrity-protected channels.
-* **Keep secret material private:** Do not publish private or symmetric keys through public JWK distribution. The
-  module's validated parsing and conversion functions intentionally reject both.
-* **Select algorithms independently:** Choose allowed signing methods through trusted application configuration. Never
-  derive the verification algorithm solely from an untrusted JWK `alg` value or token header.
-* **Treat metadata as constraints:** `kid`, `alg`, and `use` can restrict key selection and usage, but do not establish
-  trust, ownership, or authorization by themselves.
-* **Do not trust thumbprints as identities:** An RFC 7638 thumbprint identifies public key material, not the
-  organization, issuer, or purpose authorized to use that key.
-* **Rotate keys safely:** Publish replacement verification keys before they are used for signing, and retain previous
-  keys until all tokens or signatures that depend on them can no longer be accepted.
+* **Protect secret key material:** Never publish private keys or symmetric secrets through public JWK distribution. The
+  module rejects both during parsing, validation, and conversion.
+* **Select algorithms independently:** Configure accepted signing methods through trusted application settings. Do not
+  derive the verification algorithm from an untrusted JWK `alg` value or token header.
+* **Treat metadata as constraints:** The `kid`, `alg`, and `use` fields can restrict key selection and usage, but do not
+  establish provenance, ownership, or authorization.
+* **Treat thumbprints as key identifiers:** An RFC 7638 thumbprint identifies public key material. It does not identify
+  the organization, issuer, or purpose authorized to use that key.
+* **Coordinate key rotation:** Publish a replacement verification key before issuing signatures with the corresponding
+  private key. Retain previous keys until every token or signature created with them is outside the application's
+  acceptance window.
 
 ## License
 

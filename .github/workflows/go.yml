@@ -33,7 +33,6 @@ jobs:
           - jws
           - jwe
           - jwk
-          - jwks
           - doctests
 
     steps:
@@ -70,7 +69,6 @@ jobs:
           - jws
           - jwe
           - jwk
-          - jwks
 
     steps:
       - name: Check out repository
@@ -144,7 +142,6 @@ jobs:
             jws/go.sum
             jwe/go.sum
             jwk/go.sum
-            jwks/go.sum
             doctests/go.sum
             examples/**/go.sum
 
@@ -163,7 +160,7 @@ jobs:
           go list -m -f '{{if .Main}}{{.Path}} => {{.Dir}}{{end}}' all |
             sed '/^$/d'
 
-          for module in jwt jws jwe jwk jwks; do
+          for module in jwt jws jwe jwk; do
             go list -m \
               -f 'path={{.Path}} main={{.Main}} version={{.Version}} dir={{.Dir}}' \
               "github.com/mkbeh/xjose/${module}"

@@ -25,7 +25,6 @@ modules=(
   ./jws
   ./jwe
   ./jwk
-  ./jwks
 )
 
 if [[ -f ./doctests/go.mod ]]; then
@@ -57,7 +56,7 @@ while read -r module version; do
       ;;
   esac
 done < <(
-  find ./jwt ./jws ./jwe ./jwk ./jwks ./doctests ./examples \
+  find ./jwt ./jws ./jwe ./jwk ./doctests ./examples \
     -name go.mod -type f -print0 2>/dev/null |
   xargs -0 awk '
     $1 ~ /^github\.com\/mkbeh\/xjose\// && $2 ~ /^v[0-9]/ {

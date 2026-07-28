@@ -2,6 +2,8 @@ package jwk
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -15,6 +17,37 @@ const keyUseSignature = "sig"
 
 // Key represents a JSON Web Key.
 type Key = jose.JSONWebKey
+
+// Validate checks that a JWK contains valid public asymmetric key material.
+//
+// Validate does not establish trust in the key source or validate optional
+// metadata such as alg, kid, or use against a particular operation.
+func Validate(key Key) error {
+	switch material := key.Key.(type) {
+	case *ecdsa.PublicKey:
+		if material == nil {
+			return invalidPublicKeyError()
+		}
+	case *ecdsa.PrivateKey:
+		if material == nil {
+			return invalidPublicKeyError()
+		}
+	case *rsa.PublicKey:
+		if material == nil {
+			return invalidPublicKeyError()
+		}
+	case *rsa.PrivateKey:
+		if material == nil {
+			return invalidPublicKeyError()
+		}
+	}
+
+	if !key.Valid() || !key.IsPublic() {
+		return invalidPublicKeyError()
+	}
+
+	return nil
+}
 
 // FromVerificationKey converts verification key to a public JWK.
 //
@@ -50,7 +83,7 @@ func FromVerificationKey(key jwt.VerificationKey) (Key, error) {
 		Use:       keyUseSignature,
 	}
 
-	if err := validatePublicKey(result); err != nil {
+	if err := Validate(result); err != nil {
 		return Key{}, err
 	}
 
@@ -69,7 +102,7 @@ func Parse(data []byte) (Key, error) {
 		)
 	}
 
-	if err := validatePublicKey(key); err != nil {
+	if err := Validate(key); err != nil {
 		return Key{}, err
 	}
 
@@ -85,7 +118,7 @@ func ToVerificationKey(key Key, method gojwt.SigningMethod) (jwt.VerificationKey
 		)
 	}
 
-	if err := validatePublicKey(key); err != nil {
+	if err := Validate(key); err != nil {
 		return jwt.VerificationKey{}, err
 	}
 
@@ -106,7 +139,7 @@ func ToVerificationKey(key Key, method gojwt.SigningMethod) (jwt.VerificationKey
 
 // ThumbprintID returns the base64url-encoded SHA-256 RFC 7638 thumbprint.
 func ThumbprintID(key Key) (string, error) {
-	if err := validatePublicKey(key); err != nil {
+	if err := Validate(key); err != nil {
 		return "", err
 	}
 
@@ -122,13 +155,9 @@ func ThumbprintID(key Key) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(thumbprint), nil
 }
 
-func validatePublicKey(key Key) error {
-	if !key.Valid() || !key.IsPublic() {
-		return fmt.Errorf(
-			"%w: JWK must contain a valid public key",
-			jwt.ErrInvalidKey,
-		)
-	}
-
-	return nil
+func invalidPublicKeyError() error {
+	return fmt.Errorf(
+		"%w: JWK must contain a valid public key",
+		jwt.ErrInvalidKey,
+	)
 }

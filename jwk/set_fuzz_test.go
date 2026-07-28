@@ -1,4 +1,4 @@
-package jwks
+package jwk
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-func FuzzParse(f *testing.F) {
+func FuzzParseSet(f *testing.F) {
 	fixtures := asymmetricKeyFixtures(f)
 	valid := make([]Key, 0, len(fixtures))
 	for _, fixture := range fixtures {
@@ -30,24 +30,24 @@ func FuzzParse(f *testing.F) {
 			return
 		}
 
-		set, err := Parse(data)
+		set, err := ParseSet(data)
 		if err != nil {
 			return
 		}
 
 		keys := set.Keys()
 		if len(keys) == 0 {
-			t.Fatal("Parse() succeeded with an empty key set")
+			t.Fatal("ParseSet() succeeded with an empty key set")
 		}
-		if len(keys) > DefaultMaxKeys {
-			t.Fatalf("Parse() returned %d keys, limit is %d", len(keys), DefaultMaxKeys)
+		if len(keys) > DefaultMaxSetKeys {
+			t.Fatalf("ParseSet() returned %d keys, limit is %d", len(keys), DefaultMaxSetKeys)
 		}
 		for index, key := range keys {
 			if !key.Valid() {
-				t.Fatalf("Parse() returned invalid key %d", index)
+				t.Fatalf("ParseSet() returned invalid key %d", index)
 			}
 			if !key.IsPublic() {
-				t.Fatalf("Parse() returned non-public key %d", index)
+				t.Fatalf("ParseSet() returned non-public key %d", index)
 			}
 		}
 
@@ -56,9 +56,9 @@ func FuzzParse(f *testing.F) {
 			t.Fatalf("json.Marshal(set) error = %v", err)
 		}
 
-		roundTrip, err := Parse(encoded)
+		roundTrip, err := ParseSet(encoded)
 		if err != nil {
-			t.Fatalf("Parse(json.Marshal(set)) error = %v", err)
+			t.Fatalf("ParseSet(json.Marshal(set)) error = %v", err)
 		}
 		if len(roundTrip.Keys()) != len(keys) {
 			t.Fatalf(
@@ -70,7 +70,7 @@ func FuzzParse(f *testing.F) {
 	})
 }
 
-func FuzzParseWithLimit(f *testing.F) {
+func FuzzParseSetWithLimit(f *testing.F) {
 	fixture := asymmetricKeyFixtures(f)[0]
 	f.Add(marshalSet(f, makeKeys(fixture, 3)), uint8(3))
 	f.Add([]byte(`{"keys":[]}`), uint8(1))
@@ -82,25 +82,25 @@ func FuzzParseWithLimit(f *testing.F) {
 		}
 
 		limit := int(rawLimit%16) + 1
-		set, err := ParseWithLimit(data, limit)
+		set, err := ParseSetWithLimit(data, limit)
 		if err != nil {
 			return
 		}
 
 		keys := set.Keys()
 		if len(keys) == 0 {
-			t.Fatal("ParseWithLimit() succeeded with an empty key set")
+			t.Fatal("ParseSetWithLimit() succeeded with an empty key set")
 		}
 		if len(keys) > limit {
-			t.Fatalf("ParseWithLimit() returned %d keys, limit is %d", len(keys), limit)
+			t.Fatalf("ParseSetWithLimit() returned %d keys, limit is %d", len(keys), limit)
 		}
 
 		encoded, err := json.Marshal(jose.JSONWebKeySet{Keys: keys})
 		if err != nil {
 			t.Fatalf("json.Marshal() error = %v", err)
 		}
-		if _, err := ParseWithLimit(encoded, limit); err != nil {
-			t.Fatalf("ParseWithLimit(round trip) error = %v", err)
+		if _, err := ParseSetWithLimit(encoded, limit); err != nil {
+			t.Fatalf("ParseSetWithLimit(round trip) error = %v", err)
 		}
 	})
 }

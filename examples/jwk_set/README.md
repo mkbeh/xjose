@@ -26,7 +26,7 @@ go run .
 Or from the repository root:
 
 ```shell
-go run ./examples/jwks
+go run ./examples/jwk_set
 ```
 
 ## Expected output

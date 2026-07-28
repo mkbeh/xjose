@@ -20,6 +20,41 @@ import (
 	"github.com/mkbeh/xjose/jwt"
 )
 
+func TestValidate(t *testing.T) {
+	fixtures := asymmetricKeyFixtures(t)
+
+	for _, testCase := range fixtures {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := Validate(Key{Key: testCase.publicKey})
+			requireNoError(t, err)
+		})
+	}
+}
+
+func TestValidateRejectsInvalidKeys(t *testing.T) {
+	fixtures := asymmetricKeyFixtures(t)
+
+	tests := []struct {
+		name string
+		key  Key
+	}{
+		{name: "empty", key: Key{}},
+		{name: "private", key: Key{Key: fixtures[0].privateKey}},
+		{name: "symmetric", key: Key{Key: bytes.Repeat([]byte{0x42}, 32)}},
+		{name: "typed nil RSA public", key: Key{Key: (*rsa.PublicKey)(nil)}},
+		{name: "typed nil RSA private", key: Key{Key: (*rsa.PrivateKey)(nil)}},
+		{name: "typed nil ECDSA public", key: Key{Key: (*ecdsa.PublicKey)(nil)}},
+		{name: "typed nil ECDSA private", key: Key{Key: (*ecdsa.PrivateKey)(nil)}},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := Validate(testCase.key)
+			requireErrorIs(t, err, jwt.ErrInvalidKey)
+		})
+	}
+}
+
 func TestFromVerificationKey(t *testing.T) {
 	for _, testCase := range asymmetricKeyFixtures(t) {
 		t.Run(testCase.name, func(t *testing.T) {

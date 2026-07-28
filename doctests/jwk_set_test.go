@@ -7,16 +7,16 @@ import (
 	"time"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjose/jwks"
+	"github.com/mkbeh/xjose/jwk"
 	"github.com/mkbeh/xjose/jwt"
 )
 
-type jwksAccessClaims struct {
+type jwkSetAccessClaims struct {
 	Role string `json:"role"`
 	gojwt.RegisteredClaims
 }
 
-func Example_jwksJWTResolver() {
+func Example_jwkSetJWTResolver() {
 	ctx := context.Background()
 	now := testTime()
 
@@ -33,16 +33,16 @@ func Example_jwksJWTResolver() {
 	verificationKeys := must(jwt.NewStaticKeySet(
 		signingKey.VerificationKey(),
 	))
-	published := must(jwks.FromStaticKeySet(verificationKeys))
+	published := must(jwk.FromStaticKeySet(verificationKeys))
 	data := must(json.Marshal(published))
-	parsed := must(jwks.Parse(data))
+	parsed := must(jwk.ParseSet(data))
 
 	signer := must(jwt.NewSigner(
 		signingKey,
 		jwt.WithType("access+jwt"),
 	))
 
-	raw := must(signer.Sign(ctx, &jwksAccessClaims{
+	raw := must(signer.Sign(ctx, &jwkSetAccessClaims{
 		Role: "reader",
 		RegisteredClaims: gojwt.RegisteredClaims{
 			Issuer:    "https://auth.example.com",
@@ -65,7 +65,7 @@ func Example_jwksJWTResolver() {
 		jwt.WithClock(func() time.Time { return now.Add(time.Minute) }),
 	))
 
-	claims := new(jwksAccessClaims)
+	claims := new(jwkSetAccessClaims)
 	header := must(verifier.VerifyToken(ctx, raw, claims))
 
 	fmt.Println(claims.Subject)

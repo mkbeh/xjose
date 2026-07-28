@@ -9,9 +9,9 @@ This document defines the architectural boundaries, trust model, security invari
 
 * **Explicit trust configuration:** Accepted algorithms, keys, protected headers, validation policies, and resource
   limits come from trusted application configuration rather than untrusted serialized JOSE metadata.
-* **Independent Go modules:** JWT, JWS, JWE, JWK, and JWKS are independently installable modules with focused APIs and
+* **Independent Go modules:** JWT, JWS, JWE, and JWK are independently installable modules with focused APIs and
   limited coupling between formats.
-* **Secure composition:** Modules can be combined for workflows such as JWKS-backed JWT verification and nested
+* **Secure composition:** Modules can be combined for workflows such as JWK-Set-backed JWT verification and nested
   sign-then-encrypt tokens without weakening their individual security boundaries.
 * **Bounded processing:** Serialized input, payloads, plaintext, signatures, recipients, and key sets are constrained
   before expensive processing and checked again after decoding or decompression where amplification may occur.
@@ -32,9 +32,7 @@ flowchart LR
 
     subgraph Keys["Public key material"]
         direction TB
-        JWK[JWK<br/>Individual public keys]
-        JWKS[JWKS<br/>Validated public key sets]
-        JWK -->|Included in| JWKS
+        JWK[JWK module<br/>Individual keys and validated sets]
     end
 
     subgraph Signing["Signing and verification"]
@@ -48,9 +46,7 @@ flowchart LR
     App --> JWS
     App --> JWE
     App --> JWK
-    App --> JWKS
-    JWK -->|VerificationKey| JWT
-    JWKS -->|KeyResolver| JWT
+    JWK -->|VerificationKey and KeyResolver| JWT
     JWT -.->|Signed token as plaintext| JWE
     JWS -.->|Signed bytes as plaintext| JWE
 ```
@@ -58,13 +54,12 @@ flowchart LR
 Solid arrows represent direct public API integration. Dashed arrows represent optional format composition: signed JWT
 or JWS messages can be encrypted as opaque JWE plaintext.
 
-| Module | Primary responsibility                                                                          | Composition points                                                                                                                                                               |
-|--------|-------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `jwt`  | Issues and verifies signed Compact JWTs with typed claims and JWT-specific validation policies. | Accepts algorithm-bound verification keys and custom key resolvers; signed JWTs can be encrypted as opaque JWE plaintext.                                                        |
-| `jws`  | Signs and verifies arbitrary byte payloads using Compact and JSON JWS Serialization.            | Supports static keys, custom resolvers, detached payloads, multiple signatures, and application-managed cryptographic backends.                                                  |
-| `jwe`  | Encrypts and decrypts arbitrary byte payloads using Compact and JSON JWE Serialization.         | Encrypts raw data, signed JWTs, or JWS messages as opaque plaintext; recipient keys are selected through trusted application configuration.                                      |
-| `jwk`  | Parses, validates, exports, converts, and identifies individual public JSON Web Keys.           | Converts validated public keys into algorithm-bound JWT verification keys and supplies validated key material for JWKS construction.                                             |
-| `jwks` | Parses, validates, publishes, indexes, and deterministically resolves public key sets.          | Provides deterministic key resolution for verification workflows and supports application-managed key rotation by keeping current and previous public keys in one validated set. |
+| Module | Primary responsibility                                                                                         | Composition points                                                                                                                                              |
+|--------|----------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `jwt`  | Issues and verifies signed Compact JWTs with typed claims and JWT-specific validation policies.                | Accepts algorithm-bound verification keys and custom key resolvers; signed JWTs can be encrypted as opaque JWE plaintext.                                       |
+| `jws`  | Signs and verifies arbitrary byte payloads using Compact and JSON JWS Serialization.                           | Supports static keys, custom resolvers, detached payloads, multiple signatures, and application-managed cryptographic backends.                                 |
+| `jwe`  | Encrypts and decrypts arbitrary byte payloads using Compact and JSON JWE Serialization.                        | Encrypts raw data, signed JWTs, or JWS messages as opaque plaintext; recipient keys are selected through trusted application configuration.                     |
+| `jwk`  | Parses, validates, exports, identifies, publishes, and resolves public JSON Web Keys and JWK Sets.             | Converts public keys into algorithm-bound JWT verification keys and provides validated sets that implement `jwt.KeyResolver` for deterministic `kid` selection. |
 
 ## Shared Trust Model
 
@@ -78,12 +73,12 @@ authority, intended use, or application-level acceptance.
 
 The untrusted perimeter includes:
 
-* **Serialized JOSE data:** Raw JWT, JWS, JWE, JWK, and JWKS input.
+* **Serialized JOSE data:** Raw JWT, JWS, JWE, JWK, and JWK Set input.
 * **Header parameters:** Protected and unprotected parameters such as `alg`, `enc`, `kid`, `typ`, `cty`, `zip`, and
   `crit`.
 * **Payload data:** Unverified JWT claims, embedded or detached payloads, plaintext supplied for processing, and
   ciphertext.
-* **JWK metadata:** Declared properties such as `alg`, `use`, and `key_ops`.
+* **JWK metadata:** Declared properties such as `alg` and `use`.
 * **External context:** Detached payloads and Additional Authenticated Data (AAD), unless their origin and integrity
   have
   already been established by the application.
@@ -103,7 +98,7 @@ The application establishes trust through:
 * **Validation policies:** JWT claim-validation rules and multi-signature acceptance criteria.
 * **Operational bounds:** Limits for serialized input, payloads, plaintext, signatures, recipients, and key sets.
 * **Time source:** An application-controlled clock used for time-based claim validation.
-* **Key provenance:** Application-established trust in the origin and intended use of JWK and JWKS documents.
+* **Key provenance:** Application-established trust in the origin and intended use of JWK and JWK Set documents.
 
 ```mermaid
 flowchart LR
@@ -131,8 +126,8 @@ flowchart LR
 Solid arrows represent the processing flow. Dashed arrows show how trusted application configuration constrains each
 stage.
 
-For JWK and JWKS workflows, public-key and set-level validation replaces cryptographic verification or decryption where
-those operations are not applicable.
+For JWK and JWK Set workflows, public-key and set-level validation replaces cryptographic verification or decryption
+where those operations are not applicable.
 
 ### Shared Invariants
 
@@ -152,7 +147,7 @@ The shared trust model relies on the following invariants:
 5. **Acceptance requires the complete configured policy:** Successful parsing, key resolution, decryption, or an
    individual valid signature does not imply acceptance by itself. A result is accepted only when every rule required
    by the operation-specific policy succeeds.
-6. **Validation does not establish provenance:** Structurally valid JWK or JWKS data, detached payloads, and Additional
+6. **Validation does not establish provenance:** Structurally valid JWK or JWK Set data, detached payloads, and Additional
    Authenticated Data are trusted only when their origin and intended use have been established separately by the
    application.
 
@@ -497,41 +492,39 @@ JWT-specific claim validation under trusted verification policy.
 The layers remain independent: successful decryption does not authenticate the sender, and successful JWT verification
 does not provide confidentiality.
 
-## JWK
+## JWK and JWK Sets
 
-The `jwk` module parses, validates, exports, converts, and identifies individual public JSON Web Keys. Validated
-operations accept public asymmetric key material only.
+The `jwk` module owns both individual public JSON Web Keys and validated JWK Sets. Keeping these operations in one
+module provides one definition of valid public key material, one metadata-compatibility model, and one conversion path
+to algorithm-bound JWT verification keys.
 
-### Parsing and Validation Flow
+Validated operations accept public asymmetric key material only. The module performs no network retrieval, caching,
+refreshes, or retries.
 
-Parsing starts from untrusted JWK JSON. The module bounds the input, decodes the key, validates the public key material,
-and checks its declared JOSE metadata.
+### Individual-Key Parsing and Validation
+
+Parsing starts from untrusted JWK JSON. The module decodes the document and validates that it contains supported public
+asymmetric key material.
 
 ```mermaid
 flowchart LR
     Input[Untrusted JWK JSON]
-    Limits[Enforce input-size limit]
     Decode[Decode key]
     Material[Validate public asymmetric key]
-    Metadata[Validate alg, use, and key operations]
     Result([Validated public JWK])
-    Input --> Limits
-    Limits --> Decode
+    Input --> Decode
     Decode --> Material
-    Material --> Metadata
-    Metadata --> Result
+    Material --> Result
 ```
 
 Successful JSON decoding establishes structure only. Validated parsing additionally rejects private, symmetric, empty,
-incomplete, malformed, and unsupported key material.
-
-A validated JWK is structurally suitable for use, but trust in its source and intended purpose must still be established
+incomplete, malformed, and unsupported key material. Trust in the source and intended purpose must still be established
 by the application.
 
 ### Verification-Key Conversion
 
 A validated JWK can be converted into an algorithm-bound verification key after its key material and declared metadata
-are checked against the expected verification algorithm.
+are checked against an expected verification algorithm.
 
 ```mermaid
 flowchart LR
@@ -544,8 +537,8 @@ flowchart LR
     Validate --> Key
 ```
 
-Declared metadata such as `alg`, `use`, and `key_ops` constrains compatibility but does not establish trust in the key
-or its issuer.
+Declared `alg` and `use` metadata constrains compatibility but does not establish trust in the key or its issuer. The
+expected signing method remains trusted application configuration.
 
 ### Thumbprint Flow
 
@@ -569,74 +562,66 @@ flowchart LR
 A thumbprint identifies the public key material itself. It does not prove ownership, provenance, authorization, or
 trust for a particular issuer.
 
-## JWKS
+### Set Parsing and Indexing
 
-The `jwks` module parses, validates, publishes, indexes, and resolves collections of public verification keys. It
-provides deterministic key selection for JWT verification while leaving document retrieval, caching, and source trust
-under application control.
-
-### Parsing and Indexing Flow
-
-Parsing starts from an untrusted JWKS document. The module bounds the input, decodes and validates every public key,
-enforces invariants across the complete set, and builds an index for deterministic lookup.
+JWK Set parsing decodes and validates every public key, enforces invariants across the complete set, and builds an index
+for deterministic lookup. The key-count limit is applied before set construction; applications loading remote documents
+must independently bound the response body.
 
 ```mermaid
 flowchart LR
-    Input[Untrusted JWKS document]
-    Limits[Enforce document and key-count limits]
+    Input[Untrusted JWK Set document]
     Decode[Decode key set]
+    Count[Enforce key-count limit]
     Validate[Validate every public JWK]
     Policy[Enforce set-level invariants]
     Index[Index named keys by kid]
     Set([Validated public key set])
-    Input --> Limits
-    Limits --> Decode
-    Decode --> Validate
+    Input --> Decode
+    Decode --> Count
+    Count --> Validate
     Validate --> Policy
     Policy --> Index
     Index --> Set
 ```
 
-Successful parsing establishes that the keys and set structure are valid. Trust in the source and intended use of the
-JWKS document must still be established by the application.
+A multi-key set requires every key to have a non-empty, unique `kid`. A single anonymous key is supported only for
+JWTs that also omit `kid`.
 
 ### Deterministic Resolution
 
-Resolution combines trusted key-set state with an expected algorithm and optional untrusted `kid`. Selection must
-produce exactly one compatible verification key; missing, ambiguous, or incompatible candidates are rejected.
+`Set` implements `jwt.KeyResolver`. Resolution combines trusted set state with the untrusted protected `alg` and `kid`
+header values and must produce exactly one compatible verification key.
 
 ```mermaid
 flowchart LR
-    Request[Expected algorithm and optional kid]
+    Header[Protected alg and optional kid]
     Set[Validated public key set]
     Select[Select deterministic candidate]
     Validate[Validate algorithm and use compatibility]
     Key([Verification key])
     Error([Resolution error])
-    Request --> Select
+    Header --> Select
     Set --> Select
     Select -->|Unique candidate| Validate
-    Select -->|Missing or ambiguous| Error
+    Select -->|Missing or unknown| Error
     Validate -->|Compatible| Key
     Validate -->|Incompatible| Error
 ```
 
-When `kid` is present, it requires an exact match within the trusted set. When `kid` is absent, resolution succeeds only
-when the configured rules permit one unambiguous candidate. The resolver never guesses between multiple keys.
+When `kid` is present, it requires an exact match within the trusted set. When it is absent, resolution succeeds only
+for a single anonymous key. The JWT verifier independently requires the resolved algorithm to be allowlisted.
 
-The module performs no HTTP retrieval, cache refresh, or retry logic. Applications that load JWKS documents remotely
-remain responsible for transport security, caching, freshness, failure handling, and source authentication.
+### Key Rotation and Publication
 
-### Key Rotation
-
-Key rotation is performed by publishing current and previous verification keys together during a transition period.
-Tokens continue to resolve through their protected `kid` values while both keys remain accepted.
+Key rotation publishes current and previous verification keys together during a transition period. Tokens continue to
+resolve through protected `kid` values while both keys remain accepted.
 
 ```mermaid
 flowchart LR
     Current[Current verification key<br/>kid=current]
     Previous[Previous verification key<br/>kid=previous]
-    Set[Published validated JWKS]
+    Set[Published validated JWK Set]
     NewToken[New token<br/>kid=current]
     ExistingToken[Existing token<br/>kid=previous]
     Resolve[Deterministic key resolution]
@@ -650,25 +635,24 @@ flowchart LR
 ```
 
 Previous public keys remain published until tokens signed with them can no longer be accepted under the application's
-maximum token lifetime and rotation policy.
-
-Validated key sets serialize as standard `{"keys":[...]}` JWKS documents containing public key material only.
+maximum token lifetime and rotation policy. Validated sets serialize as standard `{"keys":[...]}` documents containing
+public key material only.
 
 ## Cross-Module Workflows
 
 The modules compose through public data types and interfaces while preserving their individual validation and trust
 boundaries.
 
-### JWKS-Backed JWT Verification
+### JWK-Set-Backed JWT Verification
 
-A JWKS document is validated and converted into a trusted in-memory key set before it participates in JWT
+A JWK Set document is validated and converted into a trusted in-memory key set before it participates in JWT
 verification. The JWT verifier then resolves a compatible verification key using the token algorithm and optional
 `kid`.
 
 ```mermaid
 flowchart LR
-    Source[Authenticated JWKS source]
-    Parse[Parse and validate JWKS]
+    Source[Authenticated JWK Set source]
+    Parse[Parse and validate JWK Set]
     Keys[Validated public key set]
     Token[Untrusted Compact JWT]
     Verify[Verify signature and claims]
@@ -680,28 +664,28 @@ flowchart LR
     Verify --> Result
 ```
 
-JWKS parsing validates key material and set-level invariants, but it does not establish that the source is authoritative
+JWK Set parsing validates key material and set-level invariants, but it does not establish that the source is authoritative
 for a particular issuer. Source authentication and issuer-to-key-set binding remain application responsibilities.
 
 ### Public-Key Publication
 
 Public-key publication derives public material from application-managed signing keys, converts it into validated JWK
-values, builds a validated key set, and serializes the result as a standard JWKS document.
+values, builds a validated key set, and serializes the result as a standard JWK Set document.
 
 ```mermaid
 flowchart LR
     SigningKeys[Application-managed signing keys]
     PublicKeys[Derive public key material]
     JWK[Create validated public JWKs]
-    JWKS[Build validated public key set]
-    Publish[Publish JWKS document]
+    Set[Build validated public key set]
+    Publish[Publish JWK Set document]
     SigningKeys --> PublicKeys
     PublicKeys --> JWK
-    JWK --> JWKS
-    JWKS --> Publish
+    JWK --> Set
+    Set --> Publish
 ```
 
-Only public key material enters the publication path. Private signing material remains outside JWK and JWKS output.
+Only public key material enters the publication path. Private signing material remains outside JWK and JWK Set output.
 
 ### Signed and Encrypted Claims
 

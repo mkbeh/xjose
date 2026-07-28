@@ -65,20 +65,12 @@ Encrypt and decrypt payloads using Compact, multi-recipient, and nested JWT work
 go get github.com/mkbeh/xjose/jwe
 ```
 
-**[JWK](jwk) — JSON Web Key**
+**[JWK](jwk) — JSON Web Key and JWK Set**
 
-Parse, validate, export, and identify individual public keys:
+Parse, validate, publish, identify, and resolve public keys and key sets:
 
 ```shell
 go get github.com/mkbeh/xjose/jwk
-```
-
-**[JWKS](jwks) — JSON Web Key Set**
-
-Parse, publish, and resolve sets of public verification keys:
-
-```shell
-go get github.com/mkbeh/xjose/jwks
 ```
 
 Each module has its own version, dependencies, and documentation.
@@ -87,13 +79,12 @@ Each module has its own version, dependencies, and documentation.
 
 See the [examples](examples) directory for usage examples:
 
-| Module   | Examples                                                                                                        |
-|----------|-----------------------------------------------------------------------------------------------------------------|
-| **JWT**  | [HMAC Signing](examples/jwt_hmac) · [Asymmetric Signing](examples/jwt_asymmetric)                               |
-| **JWS**  | [Compact JWS](examples/jws) · [Multiple Signatures](examples/jws_multi) · [Opaque Signing](examples/jws_opaque) |
-| **JWE**  | [Compact JWE](examples/jwe) · [Multiple Recipients](examples/jwe_multi)                                         |
-| **JWK**  | [Key Conversion and Thumbprints](examples/jwk)                                                                  |
-| **JWKS** | [Key Publication and Resolution](examples/jwks)                                                                 |
+| Module  | Examples                                                                                                        |
+|---------|-----------------------------------------------------------------------------------------------------------------|
+| **JWT** | [HMAC Signing](examples/jwt_hmac) · [Asymmetric Signing](examples/jwt_asymmetric)                               |
+| **JWS** | [Compact JWS](examples/jws) · [Multiple Signatures](examples/jws_multi) · [Opaque Signing](examples/jws_opaque) |
+| **JWE** | [Compact JWE](examples/jwe) · [Multiple Recipients](examples/jwe_multi)                                         |
+| **JWK** | [Key Conversion and Thumbprints](examples/jwk) · [Key Publication and Resolution](examples/jwk_set)             |                                                          |
 
 Each example is a standalone Go module with its own README covering setup, execution, expected output, workflow details,
 and security considerations.
@@ -110,7 +101,6 @@ and security considerations.
 * **[RFC 8037](https://datatracker.ietf.org/doc/html/rfc8037)** — CFRG ECDH and Signatures in JOSE
 * **[RFC 8725](https://datatracker.ietf.org/doc/html/rfc8725)** — JSON Web Token Best Current Practices
 * **[RFC 9864](https://datatracker.ietf.org/doc/html/rfc9864)** — Fully-Specified Algorithms for JOSE and COSE
-
 
 ## License
 

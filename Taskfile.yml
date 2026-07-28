@@ -32,7 +32,6 @@ tasks:
       - task: lint-jws
       - task: lint-jwe
       - task: lint-jwk
-      - task: lint-jwks
       - task: lint-doctests
 
   lint-jwt:
@@ -63,13 +62,6 @@ tasks:
         vars:
           WORK_DIR: /app/jwk
 
-  lint-jwks:
-    desc: "Lint JWKS module"
-    cmds:
-      - task: _run-linter
-        vars:
-          WORK_DIR: /app/jwks
-
   lint-doctests:
     desc: "Lint doctests module"
     cmds:
@@ -84,7 +76,6 @@ tasks:
       - task: test-jws
       - task: test-jwe
       - task: test-jwk
-      - task: test-jwks
       - task: test-doctests
 
   test-jwt:
@@ -114,13 +105,6 @@ tasks:
       - task: _run-module-tests
         vars:
           WORK_DIR: ./jwk
-
-  test-jwks:
-    desc: "Test JWKS module"
-    cmds:
-      - task: _run-module-tests
-        vars:
-          WORK_DIR: ./jwks
 
   test-doctests:
     desc: "Run executable documentation tests"
@@ -157,7 +141,6 @@ tasks:
               ./jws \
               ./jwe \
               ./jwk \
-              ./jwks \
               ./doctests
 
             find ./examples -name go.mod -print |
@@ -195,9 +178,6 @@ tasks:
       - task: _tidy-released-module
         vars:
           WORK_DIR: ./jwk
-      - task: _tidy-released-module
-        vars:
-          WORK_DIR: ./jwks
       - task: _tidy-released-module
         vars:
           WORK_DIR: ./doctests
@@ -239,7 +219,7 @@ tasks:
 
         printf 'mode: atomic\n' > "$output"
 
-        for module in jwt jws jwe jwk jwks; do
+        for module in jwt jws jwe jwk; do
           echo "==> $module"
           profile="$profiles/$module.out"
 
