@@ -2,97 +2,87 @@
 
 ## jwt/v0.2.0
 
-Initial release of the `jwt` module, providing secure helpers for issuing and verifying signed JSON Web Tokens with
-typed claims and explicit verification policies.
+Initial release of the `jwt` module for issuing and verifying signed JSON Web Tokens with application-defined claims,
+algorithm-bound keys, and configurable verification policies.
 
 ### Added
 
-* **Strict Verification Defaults:** Enforces explicit algorithm allowlists, mandatory expiration checks, configurable
-  size limits, and strict Compact JWT parsing.
-* **Typed Key Configuration:** Binds signing and verification keys to their expected algorithms, preventing untrusted
-  token headers from implicitly changing how key material is interpreted.
-* **Flexible Key Resolution:** Supports static key sets and custom `KeyResolver` implementations for `kid`-based key
-  selection and application-managed key rotation.
-* **External Signing:** Provides context-aware signing APIs backed by `crypto.Signer`, custom signing functions, cloud
-  KMS, HashiCorp Vault, hardware security modules, and remote signing services.
-* **Validation Policies:** Validates issuer (`iss`), audience (`aud`), subject (`sub`), token type (`typ`), maximum
-  token
-  lifetime, and maximum token age.
-* **Custom Claims:** Decodes claims into application-specific types implementing the upstream `jwt.Claims` interface.
-* **Key Parsing Utilities:** Provides PEM and DER parsing helpers for RSA, ECDSA, and Ed25519 key material.
-* **Typed Errors:** Provides dedicated errors for expired, malformed, not-yet-valid, unverifiable, oversized, and
-  otherwise invalid tokens.
+* **Signing and verification:** APIs for issuing and verifying Compact JWTs with application-defined claim types
+  implementing the upstream `jwt.Claims` interface.
+* **Algorithm-bound keys:** `SigningKey` and `VerificationKey` types that bind key material to an expected signing
+  method.
+* **Verification policies:** Required algorithm allowlists, expiration validation by default, strict Compact JWT
+  parsing, and configurable token-size limits.
+* **Claim validation:** Policies for issuer (`iss`), audience (`aud`), subject (`sub`), issued-at (`iat`), not-before
+  (`nbf`), maximum declared lifetime, maximum token age, and clock leeway.
+* **Token-type validation:** Protected `typ` header configuration for separating tokens used for different purposes.
+* **Key resolution:** Static verification keys, `StaticKeySet`, and custom `KeyResolver` implementations for trusted
+  `kid`-based key selection and rotation.
+* **External signing:** Context-aware signing through `crypto.Signer`, custom signing functions, and
+  application-managed signing backends.
+* **Key parsing and serialization:** PEM and DER helpers for RSA, ECDSA, and Ed25519 public and private key material.
 
 ## jws/v0.2.0
 
-Initial release of the `jws` module, providing helpers for signing and verifying arbitrary byte payloads using JSON Web
+Initial release of the `jws` module for signing and verifying arbitrary byte payloads using Compact and JSON Web
 Signature serializations.
 
 ### Added
 
-* **Compact and Detached JWS:** Supports Compact JWS Serialization with embedded payloads and detached signatures
-  verified against the exact externally supplied payload bytes.
-* **Multiple Signatures:** Creates and verifies Flattened and General JWS JSON Serialization containing one or more
-  independent signatures over a shared payload.
-* **Signature Policies:** Supports any-signature, all-signatures, trusted-signer, threshold quorum, and custom
-  application-defined verification policies.
-* **Strict Verification:** Enforces explicit algorithm allowlists and configurable validation of protected token type
-  (`typ`), content type (`cty`), and critical JOSE header parameters.
-* **Flexible Key Resolution:** Supports static verification keys, JWK and JWKS material, opaque verifiers, and custom
-  resolvers backed by application-managed key infrastructure.
-* **Opaque Signing:** Delegates private-key operations to cloud KMS, HashiCorp Vault, hardware security modules,
-  PKCS#11 adapters, and other external backends through `jose.OpaqueSigner`.
-* **Protected Headers:** Supports custom protected headers while rejecting reserved parameters and unsupported critical
-  extensions.
-* **Resource Limits:** Configurable limits for serialized JWS size, payload size, and the number of signatures accepted
-  or produced by JSON serialization workflows.
-* **Typed Errors:** Dedicated errors for malformed messages, invalid signatures, unsupported algorithms, failed
-  signature policies, and oversized inputs.
+* **Compact and detached JWS:** Signing and verification of Compact JWS with embedded payloads or detached payloads
+  supplied separately as exact byte sequences.
+* **JWS JSON Serialization:** Creation and verification of Flattened JWS with one signature and General JWS with
+  multiple independent signatures over the same payload.
+* **Signature policies:** Built-in policies requiring any valid signature, all signatures, specific canonical signer
+  identities, a threshold of trusted identities, or custom application-defined criteria.
+* **Algorithm and header policies:** Explicit signature-algorithm allowlists and validation of protected `typ` and `cty`
+  values.
+* **Key resolution:** Static verification material, public JWKs, JWK Sets, opaque verifiers, and custom `KeyResolver`
+  implementations for application-managed key selection.
+* **External signing and verification:** Integration with application-managed cryptographic backends through
+  `jose.OpaqueSigner` and `jose.OpaqueVerifier`.
+* **Protected headers:** Configuration of application-specific protected parameters while preventing reserved-header
+  overrides and rejecting unsupported critical JOSE extensions.
 
 ## jwe/v0.2.0
 
-Initial release of the `jwe` module, providing helpers for encrypting and decrypting arbitrary byte payloads using JSON
-Web Encryption serializations.
+Initial release of the `jwe` module for encrypting and decrypting arbitrary byte payloads using Compact and JSON Web
+Encryption serializations.
 
 ### Added
 
-* **Compact JWE:** Encrypts and decrypts arbitrary plaintext for a single recipient using Compact JWE Serialization.
-* **JWE JSON Serialization:** Supports Flattened serialization for single-recipient messages and General serialization
-  for multi-recipient workflows.
-* **Multiple Recipients:** Encrypts one shared ciphertext for multiple recipients while maintaining independent
-  key-management parameters for each recipient.
-* **Strict Decryption Policies:** Enforces independent allowlists for key-management (`alg`) and content-encryption
-  (`enc`) algorithms instead of trusting values supplied by the JWE.
-* **Additional Authenticated Data:** Cryptographically binds JSON-serialized ciphertext to visible application context
-  without encrypting that context.
-* **Flexible Key Resolution:** Supports static decryption keys and custom `KeyResolver` implementations backed by
-  application-managed key infrastructure.
-* **Protected Header Policies:** Validates expected token type (`typ`), content type (`cty`), compression settings, and
-  application-specific protected header parameters.
-* **Nested JWT:** Supports sign-then-encrypt workflows with decryption followed by verification of the inner signed JWT.
-* **Resource Limits:** Configurable limits for serialized JWE size, plaintext size, and recipient count, including
-  validation after decryption and decompression.
-* **Typed Errors:** Dedicated errors for malformed messages, unsupported algorithms, decryption failures, policy
-  violations, and oversized inputs.
+* **Compact JWE:** Encryption and decryption of byte payloads for a single recipient using Compact JWE Serialization.
+* **JWE JSON Serialization:** Flattened serialization for one recipient and General serialization for multiple
+  recipients sharing the same ciphertext with independent key-management parameters.
+* **Algorithm and header policies:** Independent allowlists for key-management (`alg`) and content-encryption (`enc`)
+  algorithms, with validation of configured protected `typ`, `cty`, and compression parameters.
+* **Additional Authenticated Data:** Authentication of unencrypted application context through the external AAD field
+  in JWE JSON Serialization.
+* **Key resolution:** Static decryption keys and custom `KeyResolver` implementations for application-managed key
+  selection.
+* **Protected headers:** Configuration of standard and application-specific protected parameters, with authenticated
+  header values available after successful decryption.
+* **Nested JWT:** Sign-then-encrypt orchestration with decryption and authentication of the outer JWE followed by
+  verification of the inner signed JWT.
 
 ## jwk/v0.2.0
 
-Initial release of the `jwk` module, providing helpers for parsing, validating, exporting, identifying, publishing, and
-resolving public JSON Web Keys and JWK Sets.
+Initial release of the `jwk` module for working with public JSON Web Keys and JWK Sets, including parsing,
+serialization, JWT verification integration, key resolution, and RFC 7638 thumbprints.
 
 ### Added
 
-* **Public-Key Validation:** Rejects private, symmetric, malformed, empty, and incomplete key material during validated
-  JWK and JWK Set construction and parsing.
-* **JWT Integration:** Converts public JWK values to and from algorithm-bound `jwt.VerificationKey` configurations and
-  implements `jwt.KeyResolver` through validated `Set` values.
-* **Metadata Constraints:** Validates compatibility between requested algorithms, declared key algorithm (`alg`), and
-  signature use (`use`) during conversion and resolution.
-* **Deterministic Key Selection:** Resolves named keys using the protected `kid` header and supports a single anonymous
-  key when a token omits `kid`.
-* **Validated Key Sets:** Rejects empty sets, duplicate key IDs, and anonymous keys in multi-key configurations.
-* **Key Rotation:** Publishes current and previous verification keys together in a validated JWK Set.
-* **RFC 7638 Thumbprints:** Generates deterministic Base64URL-encoded SHA-256 thumbprints from public key material.
-* **Bounded Set Parsing:** Provides configurable limits for the number of keys accepted from a JWK Set document.
-* **Standard Interoperability:** Uses the upstream `jose.JSONWebKey` representation and serializes sets as standard
-  `{"keys":[...]}` documents.
+* **JWK operations:** Parsing, validation, construction, and serialization of public asymmetric JWKs using the upstream
+  `jose.JSONWebKey` representation.
+* **JWK Set operations:** Construction, parsing, inspection, and serialization of standard `{"keys":[...]}` documents
+  containing public verification keys.
+* **JWT integration:** Conversion between public JWKs and algorithm-bound `jwt.VerificationKey` values, including export
+  from `jwt.StaticKeySet`.
+* **Key resolution:** `Set` implements `jwt.KeyResolver` with exact protected `kid` matching for named keys and support
+  for a single anonymous key when the token omits `kid`.
+* **Metadata enforcement:** JWK `alg` and `use` values, when present, constrain conversion and signature verification
+  without selecting the verification algorithm.
+* **Public-key restrictions:** Private keys, symmetric secrets, malformed key material, empty sets, duplicate key IDs,
+  and ambiguous multi-key sets are rejected.
+* **RFC 7638 thumbprints:** Generation of unpadded Base64URL-encoded SHA-256 thumbprints derived from canonical public
+  key members.
