@@ -2,38 +2,38 @@
 
 # JOSE toolkit for Go
 
-**JOSE modules built on top of [go-jose](https://github.com/go-jose/go-jose)
-and [golang-jwt/jwt](https://github.com/golang-jwt/jwt).**
+**JOSE modules built on top of [golang-jwt/jwt](https://github.com/golang-jwt/jwt)
+and  [go-jose](https://github.com/go-jose/go-jose).**
 
 [![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg)](https://codecov.io/gh/mkbeh/xjose)
 
 </div>
 
-`xjose` is a collection of focused Go modules for signing, verification, encryption, and public-key distribution using
+`xjose` is a modular Go toolkit for signing, verification, encryption, decryption, and public-key distribution based on
 the JSON Object Signing and Encryption (JOSE) standards.
 
-The project builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt) and
-[go-jose](https://github.com/go-jose/go-jose), adding explicit trust configuration, strict algorithm allowlists,
-resolver-based key selection, multi-signature and multi-recipient workflows, external signing support, and configurable
-resource limits.
+The project builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt)
+and [go-jose](https://github.com/go-jose/go-jose), adding explicit trust configuration, strict algorithm allowlists,
+resolver-based key selection, multi-signature and multi-recipient workflows, external signing support, and consistent
+validation policies.
 
 ## Features
 
-* **Explicit trust configuration:** Configure accepted algorithms, key sources, token types, content types, and
-  validation policies through trusted application settings instead of inferring them from untrusted input.
-* **Strict verification policies:** Enforce algorithm allowlists, registered-claim validation, protected-header
-  requirements, signature policies, and bounded input processing.
-* **Flexible key management:** Work with static keys, local key sets, custom resolvers, JWK/JWKS material, and
+* **Explicit trust configuration:** Configure accepted algorithms, key sources, token and content types, and validation
+  policies through trusted application settings rather than untrusted input.
+* **Strict verification:** Enforce algorithm allowlists, registered-claim validation, protected-header requirements, and
+  application-defined signature policies.
+* **Flexible key management:** Use static keys, local key sets, custom resolvers, JWK/JWKS material, and
   application-managed key infrastructure.
-* **Multi-party workflows:** Support multiple independent JWS signatures and multiple JWE recipients with explicit
-  application-level policies.
+* **Multi-party workflows:** Create and verify JWS objects with multiple independent signatures and JWE objects with
+  multiple recipients under explicit application policies.
 * **External signing:** Integrate cloud KMS, HashiCorp Vault, hardware security modules, PKCS#11 adapters, and remote
   signing services.
 * **Public-key distribution:** Parse, validate, publish, and resolve public JWK and JWKS documents with deterministic
   key selection and RFC 7638 thumbprints.
-* **Bounded processing:** Apply configurable limits to serialized tokens, payloads, plaintext, signatures, recipients,
-  and parsed key sets.
+* **Consistent validation policies:** Apply the same trust and validation model across JWT, JWS, JWE, JWK, and JWKS
+  workflows.
 
 ## Installation
 
@@ -51,7 +51,7 @@ go get github.com/mkbeh/xjose/jwt
 
 **[JWS](jws) — JSON Web Signature**
 
-Sign and verify arbitrary payloads using Compact, detached, or multi-signature serialization:
+Sign and verify arbitrary payloads using Compact, detached, and multi-signature serialization:
 
 ```shell
 go get github.com/mkbeh/xjose/jws
@@ -59,7 +59,7 @@ go get github.com/mkbeh/xjose/jws
 
 **[JWE](jwe) — JSON Web Encryption**
 
-Encrypt and decrypt payloads using Compact, multi-recipient, or nested JWT workflows:
+Encrypt and decrypt payloads using Compact, multi-recipient, and nested JWT workflows:
 
 ```shell
 go get github.com/mkbeh/xjose/jwe
@@ -75,13 +75,13 @@ go get github.com/mkbeh/xjose/jwk
 
 **[JWKS](jwks) — JSON Web Key Set**
 
-Parse, publish, and resolve collections of public verification keys:
+Parse, publish, and resolve sets of public verification keys:
 
 ```shell
 go get github.com/mkbeh/xjose/jwks
 ```
 
-Each module maintains its own documentation, versions, and dependency graph.
+Each module has its own version, dependencies, and documentation.
 
 ## Examples
 
@@ -95,7 +95,8 @@ See the [examples](examples) directory for usage examples:
 | **JWK**  | [Key Conversion and Thumbprints](examples/jwk)                                                                  |
 | **JWKS** | [Key Publication and Resolution](examples/jwks)                                                                 |
 
-For installation details, core workflows, and security considerations, see the README for each module.
+Each example is a standalone Go module with its own README covering setup, execution, expected output, workflow details,
+and security considerations.
 
 ## References
 
@@ -106,8 +107,10 @@ For installation details, core workflows, and security considerations, see the R
 * **[RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519)** — JSON Web Token (JWT)
 * **[RFC 7520](https://datatracker.ietf.org/doc/html/rfc7520)** — Examples of Protecting Content Using JOSE
 * **[RFC 7638](https://datatracker.ietf.org/doc/html/rfc7638)** — JSON Web Key Thumbprint
-* **[RFC 8037](https://datatracker.ietf.org/doc/html/rfc8037)** — CFRG Elliptic Curves in JOSE
+* **[RFC 8037](https://datatracker.ietf.org/doc/html/rfc8037)** — CFRG ECDH and Signatures in JOSE
 * **[RFC 8725](https://datatracker.ietf.org/doc/html/rfc8725)** — JSON Web Token Best Current Practices
+* **[RFC 9864](https://datatracker.ietf.org/doc/html/rfc9864)** — Fully-Specified Algorithms for JOSE and COSE
+
 
 ## License
 
