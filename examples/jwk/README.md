@@ -1,7 +1,7 @@
 # JSON Web Key
 
 This example exports an RSA public verification key as a JSON Web Key (JWK), calculates its RFC 7638 thumbprint, parses
-the serialized JWK, and converts it back to an `xjwt.VerificationKey`.
+the serialized JWK, and converts it back to an `jwt.VerificationKey`.
 
 **This example demonstrates:**
 
@@ -9,7 +9,7 @@ the serialized JWK, and converts it back to an `xjwt.VerificationKey`.
 * Exporting public key material as JWK
 * Serializing and parsing JWK JSON
 * Calculating an RFC 7638 SHA-256 thumbprint
-* Converting a parsed JWK back to an `xjwt.VerificationKey`
+* Converting a parsed JWK back to an `jwt.VerificationKey`
 * Preserving the key ID and signing algorithm
 
 ## Run

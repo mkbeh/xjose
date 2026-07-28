@@ -8,7 +8,7 @@ The previous public key remains available to demonstrate a typical verification-
 **This example demonstrates:**
 
 * Maintaining current and previous verification keys during rotation
-* Exporting an `xjwt.StaticKeySet` as JWKS
+* Exporting an `jwt.StaticKeySet` as JWKS
 * Serializing and parsing a JWKS document
 * Issuing a JWT with the current private key
 * Selecting the verification key by the token's `kid`
@@ -56,6 +56,7 @@ JWKS:
   ]
 }
 
+token: <compact JWT>
 verified user: user-123
 verified key ID: rsa-signing-2026-07
 verified algorithm: PS256

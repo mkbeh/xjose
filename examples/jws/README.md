@@ -1,13 +1,13 @@
 # JWS
 
 This example demonstrates signing and verifying arbitrary byte payloads with Compact JWS Serialization and detached JWS
-using `xjwt/jws`.
+using `jws`.
 
 **This example demonstrates:**
 
 - Signing an embedded payload with `PS256`
 - Verifying a Compact JWS with a strict algorithm allowlist
-- Selecting a trusted public JWK by `kid`
+- Binding the protected kid and alg headers to a trusted public JWK
 - Validating protected `typ` and `cty` headers
 - Signing and verifying exact payload bytes with detached JWS
 

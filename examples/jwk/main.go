@@ -49,7 +49,7 @@ func main() {
 		log.Fatalf("marshal public JWK: %v", err)
 	}
 
-	// Parse the serialized JWK and convert it back to an xjwt verification key.
+	// Parse the serialized JWK and convert it back to an verification key.
 	parsedJWK, err := jwk.Parse(jwkJSON)
 	if err != nil {
 		log.Fatalf("parse public JWK: %v", err)

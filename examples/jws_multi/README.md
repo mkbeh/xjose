@@ -1,7 +1,7 @@
 # Multi-Signature JWS
 
 This example demonstrates signing one payload with multiple independent keys and enforcing an identity-based
-verification policy using `xjwt/jws`.
+verification policy using `jws`.
 
 **This example demonstrates:**
 

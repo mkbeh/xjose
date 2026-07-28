@@ -1,6 +1,6 @@
 # Examples
 
-This directory contains runnable examples demonstrating the main features and usage patterns of `xjwt`.
+This directory contains runnable examples demonstrating the main features and usage patterns.
 
 | Example                            | Demonstrates                                                                                                                  |
 |:-----------------------------------|:------------------------------------------------------------------------------------------------------------------------------|
@@ -31,7 +31,7 @@ Or run it from the repository root:
 go run ./examples/jwt_hmac
 ```
 
-Replace `hmac` with the directory name of another example.
+Replace `jwt_hmac` with the directory name of another example.
 
 > [!NOTE]
 > The examples generate temporary cryptographic keys at startup and do not require external services. Refer to the

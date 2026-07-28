@@ -1,4 +1,4 @@
-module github.com/mkbeh/xjose/examples/jwe
+module jwe
 
 go 1.26
 
