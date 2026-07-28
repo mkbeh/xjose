@@ -110,7 +110,7 @@ func FuzzMultiVerifierVerifyMessage(f *testing.F) {
 	verifier, err := NewMultiVerifier(
 		secret,
 		[]jose.SignatureAlgorithm{jose.HS256, jose.HS512},
-		WithSignaturePolicy(RequireAllProvidedSignatures()),
+		WithSignaturePolicy(RequireAllSignatures()),
 		WithMaxTokenSize(8192),
 		WithMaxPayloadSize(2048),
 		WithMaxSignatures(4),
@@ -261,7 +261,7 @@ func FuzzMultiHMACRoundTrip(f *testing.F) {
 	verifier, err := NewMultiVerifier(
 		secret,
 		[]jose.SignatureAlgorithm{jose.HS256, jose.HS512},
-		WithSignaturePolicy(RequireAllProvidedSignatures()),
+		WithSignaturePolicy(RequireAllSignatures()),
 		WithMaxTokenSize(32<<10),
 		WithMaxPayloadSize(4096),
 		WithMaxSignatures(2),

@@ -22,8 +22,8 @@ func TestSignaturePolicies(t *testing.T) {
 		t.Fatal("RequireAnySignature unexpectedly accepted invalid results")
 	}
 
-	requireNoError(t, RequireAllProvidedSignatures().Evaluate([]SignatureResult{validA, validB}))
-	err := RequireAllProvidedSignatures().Evaluate([]SignatureResult{validA, invalid})
+	requireNoError(t, RequireAllSignatures().Evaluate([]SignatureResult{validA, validB}))
+	err := RequireAllSignatures().Evaluate([]SignatureResult{validA, invalid})
 	if !errors.Is(err, ErrKeyNotFound) {
 		t.Fatalf("error = %v, want ErrKeyNotFound in chain", err)
 	}

@@ -68,7 +68,7 @@ jws.RequireKeyIDs(
 The JWS is accepted only when both trusted identities have valid signatures. The resolver treats the protected `kid` and
 `alg` headers as untrusted routing hints and maps them only to application-controlled verification keys.
 
-Other available policies include `RequireAnySignature`, `RequireAllProvidedSignatures`, `RequireThreshold`, and `AllOf`.
+Other available policies include `RequireAnySignature`, `RequireAllSignatures`, `RequireThreshold`, and `AllOf`.
 
 ## Security notes
 

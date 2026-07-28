@@ -43,12 +43,12 @@ func RequireAnySignature() SignaturePolicy {
 	return requireAnyPolicy{}
 }
 
-// RequireAllProvidedSignatures accepts a JWS only when every signature present
+// RequireAllSignatures accepts a JWS only when every signature present
 // in the object is valid with a trusted verification key.
 //
 // This policy does not require any particular signer identity. Use
 // RequireKeyIDs or RequireThreshold for identity-based approval rules.
-func RequireAllProvidedSignatures() SignaturePolicy {
+func RequireAllSignatures() SignaturePolicy {
 	return requireAllProvidedPolicy{}
 }
 

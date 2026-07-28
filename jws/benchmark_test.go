@@ -201,7 +201,7 @@ func BenchmarkMultiVerifierVerifyMessage(b *testing.B) {
 		},
 		{
 			name:   "RequireAll",
-			policy: RequireAllProvidedSignatures(),
+			policy: RequireAllSignatures(),
 		},
 	}
 

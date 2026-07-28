@@ -146,7 +146,7 @@ func TestMultiSignerConcurrentUse(t *testing.T) {
 	verifier, err := NewMultiVerifier(
 		secret,
 		[]jose.SignatureAlgorithm{jose.HS256, jose.HS512},
-		WithSignaturePolicy(RequireAllProvidedSignatures()),
+		WithSignaturePolicy(RequireAllSignatures()),
 	)
 	requireNoError(t, err)
 

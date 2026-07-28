@@ -41,7 +41,7 @@ func TestMultiVerifierPolicies(t *testing.T) {
 		{
 			name:       "all provided",
 			resolver:   fixture.resolver,
-			policy:     RequireAllProvidedSignatures(),
+			policy:     RequireAllSignatures(),
 			wantValid:  2,
 			wantResult: 2,
 		},
@@ -146,7 +146,7 @@ func TestMultiVerifierContinuesAfterInvalidSignature(t *testing.T) {
 	allVerifier, err := NewMultiVerifierWithResolver(
 		fixture.resolver,
 		fixture.algorithms,
-		WithSignaturePolicy(RequireAllProvidedSignatures()),
+		WithSignaturePolicy(RequireAllSignatures()),
 	)
 	requireNoError(t, err)
 
