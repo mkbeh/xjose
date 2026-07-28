@@ -14,6 +14,9 @@ import (
 
 func Example_jweCompact() {
 	ctx := context.Background()
+
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	key := bytes.Repeat([]byte{0x71}, 32)
 
 	encrypter := must(jwe.NewEncrypter(
@@ -53,8 +56,13 @@ func Example_jweCompact() {
 
 func Example_jweMultipleRecipients() {
 	ctx := context.Background()
+
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	ordersKey := bytes.Repeat([]byte{0x72}, 32)
 	billingKey := bytes.Repeat([]byte{0x73}, 32)
+
+	// Additional authenticated data is integrity-protected but not encrypted.
 	authData := []byte("tenant=acme;order=order-123")
 
 	encrypter := must(jwe.NewMultiEncrypter(
@@ -111,6 +119,8 @@ func Example_jweNestedJWT() {
 	ctx := context.Background()
 	now := testTime()
 
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	signingKey := must(jwt.NewSigningKey(
 		"jwt-signing-key",
 		gojwt.SigningMethodHS256,

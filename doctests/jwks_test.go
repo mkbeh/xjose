@@ -19,6 +19,9 @@ type jwksAccessClaims struct {
 func Example_jwksJWTResolver() {
 	ctx := context.Background()
 	now := testTime()
+
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	_, privateKey := testEd25519Key(0x32)
 
 	signingKey := must(jwt.NewSigningKey(

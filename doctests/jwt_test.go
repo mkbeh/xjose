@@ -19,6 +19,8 @@ func Example_jwtHMAC() {
 	ctx := context.Background()
 	now := testTime()
 
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	// Bind trusted key material to the only accepted signing method.
 	signingKey := must(jwt.NewSigningKey(
 		"hmac-signing-key",

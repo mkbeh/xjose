@@ -13,6 +13,9 @@ import (
 
 func Example_jwsCompact() {
 	ctx := context.Background()
+
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	key := bytes.Repeat([]byte{0x51}, 32)
 
 	signer := must(jws.NewSigner(
@@ -53,6 +56,9 @@ func Example_jwsCompact() {
 
 func Example_jwsDetached() {
 	ctx := context.Background()
+
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	key := bytes.Repeat([]byte{0x52}, 32)
 	payload := []byte("detached payload")
 
@@ -84,6 +90,9 @@ func Example_jwsDetached() {
 
 func Example_jwsMultipleSignatures() {
 	ctx := context.Background()
+
+	// Deterministic key pairs keep the example reproducible.
+	// Generate or load keys securely in production.
 	issuerPublicKey, issuerPrivateKey := testEd25519Key(0x61)
 	approvalPublicKey, approvalPrivateKey := testEd25519Key(0x62)
 

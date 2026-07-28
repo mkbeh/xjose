@@ -10,6 +10,8 @@ import (
 )
 
 func Example_jwkRoundTrip() {
+	// Deterministic key material keeps the example reproducible.
+	// Generate or load keys securely in production.
 	publicKey, _ := testEd25519Key(0x31)
 
 	verificationKey := must(jwt.NewVerificationKey(
