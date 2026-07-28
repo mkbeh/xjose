@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func TestMultiEncrypterKeyManagementAlgorithms(t *testing.T) {

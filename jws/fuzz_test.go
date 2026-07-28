@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func FuzzVerifierVerifyMessage(f *testing.F) {

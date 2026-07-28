@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func TestMultiSignerProducesFlattenedAndGeneralSerialization(t *testing.T) {

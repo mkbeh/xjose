@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/mkbeh/xjose/jws"
 )
 

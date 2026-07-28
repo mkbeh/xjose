@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func TestProtectedHeaderParsing(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func TestSignerRoundTrip(t *testing.T) {

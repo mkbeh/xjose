@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/mkbeh/xjose/jwe"
 	"github.com/mkbeh/xjose/jwt"

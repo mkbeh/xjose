@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func FuzzDecrypterDecryptToken(f *testing.F) {
