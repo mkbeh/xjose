@@ -79,12 +79,12 @@ Each module has its own version, dependencies, and documentation.
 
 See the [examples](examples) directory for usage examples:
 
-| Module  | Examples                                                                                                        |
-|---------|-----------------------------------------------------------------------------------------------------------------|
-| **JWT** | [HMAC Signing](examples/jwt_hmac) · [Asymmetric Signing](examples/jwt_asymmetric)                               |
-| **JWS** | [Compact JWS](examples/jws) · [Multiple Signatures](examples/jws_multi) · [Opaque Signing](examples/jws_opaque) |
-| **JWE** | [Compact JWE](examples/jwe) · [Multiple Recipients](examples/jwe_multi)                                         |
-| **JWK** | [Key Conversion and Thumbprints](examples/jwk) · [Key Publication and Resolution](examples/jwk_set)             |                                                          |
+| Module  | Examples                                                                                                          |
+|---------|-------------------------------------------------------------------------------------------------------------------|
+| **JWT** | [HMAC Signing](examples/jwt_hmac)<br>[Asymmetric Signing](examples/jwt_asymmetric)                                |
+| **JWS** | [Compact JWS](examples/jws)<br>[Multiple Signatures](examples/jws_multi)<br>[Opaque Signing](examples/jws_opaque) |
+| **JWE** | [Compact JWE](examples/jwe)<br>[Multiple Recipients](examples/jwe_multi)                                          |
+| **JWK** | [Key Conversion and Thumbprints](examples/jwk)<br>[Key Publication and Resolution](examples/jwk_set)              |
 
 Each example is a standalone Go module with its own README covering setup, execution, expected output, workflow details,
 and security considerations.
