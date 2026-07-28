@@ -7,27 +7,26 @@
 Secure, typed helpers for signing and verifying compact JSON Web Tokens in Go.
 
 The `jwt` module builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt) and provides a high-level API for issuing
-and verifying signed JWTs with structured claims. It adds explicit key types, strict verification defaults,
-resolver-based key selection, external signing support, configurable security policies, and compatibility with custom
-claim types implementing the upstream `jwt.Claims` interface.
+and verifying signed tokens with structured, application-defined claims. It combines explicit key types, algorithm
+allowlists, resolver-based key selection, external signing support, and configurable validation policies.
 
-For complete runnable examples, see the [examples](../examples) directory.
+For complete runnable workflows, see the [examples](../examples) directory.
 
 ## Features
 
-* **Strict verification defaults:** Explicit algorithm allowlists, required expiration validation, token size limits,
-  and strict compact-token parsing.
-* **Typed key configuration:** Signing and verification keys are bound to their expected algorithms, preventing key
-  material from being used implicitly with an untrusted token algorithm.
-* **Flexible key resolution:** Built-in static key sets and custom resolvers support `kid`-based key selection and key
-  rotation.
-* **External signing:** Context-aware signing through KMS, HashiCorp Vault, HSMs, remote signing services, or custom
-  cryptographic backends.
-* **Validation policies:** Configurable checks for issuer (`iss`), audience (`aud`), subject (`sub`), token type (
-  `typ`), maximum token lifetime, and maximum token age.
-* **Custom claims:** Decode tokens into application-specific claim structures implementing the upstream `jwt.Claims`
+* **Strict verification:** Require explicit algorithm allowlists, validate expiration by default, and reject malformed
+  Compact JWTs.
+* **Algorithm-bound keys:** Bind signing and verification keys to their expected algorithms so an untrusted `alg` header
+  cannot select how key material is used.
+* **Flexible key resolution:** Use static keys, local key sets, or custom resolvers for trusted `kid`-based key
+  selection and rotation.
+* **Configurable validation:** Enforce issuer (`iss`), audience (`aud`), subject (`sub`), token type (`typ`),
+  issued-at (`iat`), not-before (`nbf`), lifetime, and age policies.
+* **Application-defined claims:** Decode tokens into custom claim structures compatible with the upstream `jwt.Claims`
   interface.
-* **Key parsing helpers:** PEM and DER utilities for RSA, ECDSA, and Ed25519 key material.
+* **External signing:** Integrate KMS, HashiCorp Vault, HSMs, remote signing services, and other application-managed
+  signing backends.
+* **Key parsing helpers:** Import RSA, ECDSA, and Ed25519 key material from PEM and DER encodings.
 
 ## Installation
 
@@ -80,7 +79,7 @@ claims := &AccessClaims{
 	},
 }
 
-// Sign and serialize the compact token.
+// Sign and serialize the Compact JWT.
 token, err := signer.Sign(ctx, claims)
 if err != nil {
 	log.Fatalf("sign token: %v", err)
@@ -176,23 +175,21 @@ bound; keep this limit as small as practical for the claims issued by the applic
 
 ## Verification
 
-To prevent algorithm substitution and key-misuse attacks, verification is driven by trusted application configuration
-rather than untrusted token headers.
+Verification is controlled by trusted application configuration rather than token-supplied algorithm or key metadata.
 
 A `Verifier` combines:
 
 * a trusted `KeyResolver`;
 * a mandatory algorithm allowlist configured with `WithMethods`;
-* optional claim and JOSE header policies.
+* optional claim and token-type validation policies.
 
 Both `VerificationKey` and `StaticKeySet` implement `KeyResolver` and can be passed directly to `NewVerifier`.
 
 ### Verification Methods
 
-Both methods verify the signature, apply the configured policy, and decode the claims. Choose the method based on
-whether the application also needs the verified JOSE header.
+Both verification methods validate the signature, apply the configured policy, and decode the claims.
 
-Use `Verify` when only the claims are required:
+Use `Verify` when only the verified claims are needed:
 
 <!-- @formatter:off -->
 
@@ -204,7 +201,7 @@ err := verifier.Verify(ctx, token, claims)
 
 <!-- @formatter:on -->
 
-Use `VerifyToken` to also receive the verified `alg`, `kid`, and `typ` values:
+Use `VerifyToken` when the application also needs the verified `alg`, `kid`, and `typ` header values:
 
 <!-- @formatter:off -->
 
@@ -216,33 +213,39 @@ header, err := verifier.VerifyToken(ctx, token, claims)
 
 <!-- @formatter:on -->
 
+Pass a fresh, non-nil claims value to each verification call. Claims may be partially populated when verification fails
+and should not be shared concurrently between calls.
+
 > [!IMPORTANT]
 > Token headers are untrusted until verification succeeds. A custom `KeyResolver` may use `alg`, `kid`, and `typ` only
-> as candidate-key selectors, never as proof of authenticity.
+> as candidate-key selectors. They must not be treated as authenticated metadata or used for authorization before
+> verification completes.
 
 ## Validation Policy
 
-A `Verifier` applies strict baseline validation and can be extended with application-specific claim and header policies.
+A `Verifier` enforces a strict validation baseline and can apply additional application-specific claim and token-type
+policies.
 
 ### Secure Defaults
 
-A verifier starts from a fail-closed validation baseline:
+Verification starts from a fail-closed baseline:
 
 * **Explicit algorithms:** `WithMethods` is required, and tokens using any other signing method are rejected.
-* **Strict parsing:** JWT segments must use valid Base64URL encoding, and malformed compact tokens are rejected.
-* **Bounded input:** Tokens exceeding the configured size limit are rejected before cryptographic verification.
+* **Strict parsing:** Malformed Compact JWTs and invalid Base64URL segments are rejected.
+* **Bounded input:** Tokens exceeding the configured maximum size are rejected before parsing and cryptographic
+  verification.
 * **Required expiration:** Every token must contain a valid `exp` claim unless this requirement is explicitly disabled.
-* **Not-before validation:** When `nbf` is present, the token is rejected until that time is reached.
+* **Temporal validation:** The `exp` claim is always validated, and `nbf` is validated when present.
 
-Application-specific trust requirements—including issuer, audience, subject, token type, and whether `iat` must be
-present—are not inferred automatically and should be configured explicitly.
+Application-specific trust requirements—including issuer, audience, subject, token type, and whether `iat` or `nbf` must
+be present—are not inferred automatically and should be configured explicitly.
 
 ### Policy Configuration
 
 Verifier options are combined into a single validation policy. A token is accepted only when its signature is valid and
-every configured constraint succeeds.
+every baseline and application-defined constraint succeeds.
 
-The following policy is suitable for short-lived access tokens issued by a known authority:
+The following configuration is suitable for short-lived access tokens issued by a known authority:
 
 <!-- @formatter:off -->
 
@@ -267,34 +270,38 @@ verifier, err := jwt.NewVerifier(
 
 <!-- @formatter:on -->
 
-### Key Interactions
+### Policy Interactions
 
-* **Audience:** `WithAudience` requires at least one configured audience to match; `WithAllAudiences` requires all of
-  them.
-* **Issued At (`iat`):** `ValidateIssuedAt` validates `iat` when present; `RequireIssuedAt` also rejects tokens that
+* **Audience:** `WithAudience` requires at least one configured audience to match. `WithAllAudiences` requires every
+  configured audience to be present.
+* **Issued at (`iat`):** `ValidateIssuedAt` validates `iat` when present. `RequireIssuedAt` also rejects tokens that
   omit it.
-* **Duration limits:** `WithMaxLifetime` restricts `exp - iat`, while `WithMaxTokenAge` restricts `now - iat`.
-* **Leeway:** `WithLeeway` applies to expiration, not-before, issued-at, and token-age validation, but does not extend
-  `WithMaxLifetime`.
+* **Not before (`nbf`):** The verifier validates `nbf` when present. `RequireNotBefore` also rejects tokens that omit
+  it.
+* **Duration limits:** `WithMaxLifetime` restricts the declared lifetime `exp - iat`, while `WithMaxTokenAge` restricts
+  the elapsed age `now - iat`.
+* **Leeway:** `WithLeeway` applies to expiration, not-before, issued-at, and token-age validation. It does not extend
+  the maximum lifetime permitted by `WithMaxLifetime`.
 
 > [!IMPORTANT]
-> `WithMaxLifetime` and `WithMaxTokenAge` do not enforce `iat` presence on their own. Combine them with
-`RequireIssuedAt` if tokens omitting an issuance timestamp must be rejected.
+> `WithMaxLifetime` and `WithMaxTokenAge` do not require an `iat` claim on their own. Combine them with
+> `RequireIssuedAt` when tokens without an issuance timestamp must be rejected.
 
 > [!WARNING]
-> Expiration validation is enabled by default. Use `AllowMissingExpiration` only when compatibility with non-expiring
-> tokens is explicitly required.
+> Expiration is required and validated by default. Use `AllowMissingExpiration` only when compatibility with
+> non-expiring tokens is explicitly required.
 
 ## Key Management and Resolvers
 
-A `Verifier` delegates trusted-key selection to a `KeyResolver`. Both `VerificationKey` and `StaticKeySet` implement
-this interface directly.
+A Verifier uses a KeyResolver to select a verification key from trusted keys managed by the application.. Both
+`VerificationKey` and `StaticKeySet` implement this interface and can be passed directly to `NewVerifier`.
 
-### Static Verification
+### Static Keys
 
 Use a single named key when the verifier trusts one signing key:
 
 <!-- @formatter:off -->
+
 ```go
 verificationKey, err := jwt.NewVerificationKey(
 	"key-2026-07",
@@ -307,12 +314,14 @@ verifier, err := jwt.NewVerifier(
 	jwt.WithMethods(gojwt.SigningMethodPS256),
 )
 ```
+
 <!-- @formatter:on -->
 
-A named key accepts only tokens containing the same `kid`. To accept only tokens without a `kid`, create an anonymous
-key by passing an empty key ID:
+A named `VerificationKey` accepts only tokens containing the same `kid`. To accept only tokens without a `kid`, create
+an anonymous key by passing an empty key ID:
 
 <!-- @formatter:off -->
+
 ```go
 anonymousKey, err := jwt.NewVerificationKey(
 	"",
@@ -320,11 +329,13 @@ anonymousKey, err := jwt.NewVerificationKey(
 	publicKey,
 )
 ```
+
 <!-- @formatter:on -->
 
-For local key rotation, keep the active and recently retired verification keys in a `StaticKeySet`:
+For local key rotation, place the active and recently retired named keys in a `StaticKeySet`:
 
 <!-- @formatter:off -->
+
 ```go
 keySet, err := jwt.NewStaticKeySet(currentKey, previousKey)
 
@@ -333,18 +344,20 @@ verifier, err := jwt.NewVerifier(
 	jwt.WithMethods(gojwt.SigningMethodPS256),
 )
 ```
+
 <!-- @formatter:on -->
 
 > [!IMPORTANT]
-> Named and anonymous keys cannot be mixed in the same `StaticKeySet`. A named set requires an exact `kid` match; tokens
-> with a missing or unknown key ID are rejected.
+> Named and anonymous keys cannot be mixed in the same `StaticKeySet`. A set of named keys requires an exact `kid`
+> match; tokens with a missing or unknown key ID are rejected.
 
 ### Custom Resolvers
 
-Use `KeyResolverFunc` when keys are managed dynamically by application infrastructure such as an in-memory cache, a JWKS
-provider, or an external key-management system:
+Use `KeyResolverFunc` when verification keys are obtained from application-managed infrastructure such as an in-memory
+cache, a local JWKS source, or a custom key service:
 
 <!-- @formatter:off -->
+
 ```go
 resolver := jwt.KeyResolverFunc(
 	func(ctx context.Context, header jwt.Header) (jwt.VerificationKey, error) {
@@ -362,15 +375,16 @@ verifier, err := jwt.NewVerifier(
 	jwt.WithMethods(gojwt.SigningMethodPS256),
 )
 ```
+
 <!-- @formatter:on -->
 
-The resolver receives parsed `alg`, `kid`, and `typ` values before signature verification. After a key is resolved, the
-verifier still requires the token algorithm to be allowlisted and to match the signing method bound to the returned
-`VerificationKey`.
+The resolver receives the parsed `alg`, `kid`, and `typ` header values before signature verification and may use them
+only to locate a candidate key. After resolution, the verifier still requires the token algorithm to be allowlisted and
+to match the signing method bound to the returned `VerificationKey`.
 
 > [!WARNING]
-> Header values passed to a resolver are untrusted lookup inputs, not proof of authenticity. Do not use them for
-> authorization or other security-sensitive decisions before verification succeeds.
+> Header values passed to a resolver are untrusted lookup inputs. Do not treat them as authenticated metadata or use
+> them for authorization or other security-sensitive decisions before verification succeeds.
 
 ## External Signing
 
@@ -378,6 +392,7 @@ Use `NewExternalSigningKey` when private key operations are delegated to an exte
 Cloud KMS, HashiCorp Vault, or an HSM:
 
 <!-- @formatter:off -->
+
 ```go
 signingKey, err := jwt.NewExternalSigningKey(
 	"kms-key-2026-07",
@@ -391,25 +406,28 @@ if err != nil {
 	return err
 }
 
-// Derive the matching verification key.
+// Obtain the corresponding verification key.
 verificationKey := signingKey.VerificationKey()
 ```
+
 <!-- @formatter:on -->
 
-The callback receives the raw JWT signing input:
+The callback receives the complete JWT signing input:
 
 ```text
 base64url(header) + "." + base64url(claims)
 ```
 
-It must return the raw signature bytes expected by the selected signing method. The module handles the final Base64URL
-encoding and compact-token serialization.
+It is responsible for invoking the external signing backend according to the selected signing method and returning the
+signature bytes in the format expected by JWT. The module applies the final Base64URL encoding and constructs the
+Compact JWT.
 
-The supplied public key is validated against the signing method and retained in the corresponding `VerificationKey`.
+The supplied public key is bound to the signing method and retained in the corresponding `VerificationKey`.
 
 > [!IMPORTANT]
-> Sign the provided input exactly once. Do not encode, reconstruct, or otherwise modify it. Hash it only when required
-> by the contract between the selected signing method and the external signing backend.
+> Pass the signing input to the external backend without re-encoding or reconstructing it. Apply hashing only when
+> required by the selected signing method and backend contract, and convert provider-specific signature formats before
+> returning them to the module.
 
 ## PEM and DER Keys
 
@@ -470,19 +488,19 @@ publicKeyDER, err := jwt.MarshalPublicKeyDER(publicKey)
 
 ## Security Considerations
 
-The module provides strict parsing and verification primitives, but the application remains responsible for the overall
-token security model:
+The module provides strict parsing, signature verification, and validation primitives, but the application remains
+responsible for defining and enforcing the complete token security model:
 
-* **Prefer asymmetric signing across trust boundaries:** Use RSA, ECDSA, or Ed25519 when token issuers and verifiers
-  have different privileges. Any service holding an HMAC secret can both verify and issue valid tokens.
-* **Separate token classes:** Configure distinct issuer, audience, and token type policies for access tokens, refresh
-  tokens, service credentials, and other token purposes. This prevents a valid token issued for one context from being
+* **Prefer asymmetric signing across trust boundaries:** Use RSA, ECDSA, or Ed25519 when issuers and verifiers have
+  different privileges. Any service that holds an HMAC secret can both verify and issue valid tokens.
+* **Separate token classes:** Configure distinct issuer, audience, and token-type policies for access tokens, refresh
+  tokens, service credentials, and other token purposes. This prevents a token issued for one context from being
   accepted in another.
 * **Rotate keys safely:** Distribute a new verification key before issuing tokens with the corresponding private key.
-  Retain previous verification keys until every token signed with them has expired, including any configured leeway.
-* **Distinguish verification from authorization:** Successful verification proves that the token is authentic and
-  satisfies the configured policy. Application code must still determine whether the verified subject, roles, scopes,
-  and permissions authorize the requested operation.
+  Retain previous verification keys until all tokens signed with them have expired, including any configured leeway.
+* **Separate verification from authorization:** Successful verification establishes that the token was signed with a
+  trusted key and satisfies the configured policy. Application code must still decide whether the verified subject,
+  roles, scopes, and permissions authorize the requested operation.
 
 ## License
 
