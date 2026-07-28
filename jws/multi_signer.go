@@ -85,7 +85,7 @@ func (signer *MultiSigner) Sign(payload []byte) (string, error) {
 
 	raw := object.FullSerialize()
 
-	if err := validateRaw(raw, signer.config.maxTokenSize); err != nil {
+	if err := validateRawToken(raw, signer.config.maxTokenSize); err != nil {
 		return "", err
 	}
 

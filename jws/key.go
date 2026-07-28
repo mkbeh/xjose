@@ -3,15 +3,21 @@ package jws
 import (
 	"bytes"
 	"crypto/ed25519"
-	"crypto/x509"
 	"fmt"
 
 	"github.com/go-jose/go-jose/v4"
 )
 
-const maxKeyIDLength = 256
+const (
+	maxKeyIDLength  = 256
+	keyUseSignature = "sig"
+)
 
 // SigningKey describes one JWS signature algorithm and its key material.
+//
+// Byte-backed key material is copied during signer construction. RSA, ECDSA,
+// opaque signers, and custom key objects are retained by reference and must not
+// be mutated while the resulting Signer or MultiSigner remains in use.
 //
 // KeyID is copied into the protected kid header. It may be empty when the
 // verification key is selected out of band.
@@ -23,16 +29,26 @@ type SigningKey struct {
 
 func (key SigningKey) validate() error {
 	if key.Algorithm == "" {
-		return fmt.Errorf("%w: signature algorithm is required", ErrInvalidConfig)
+		return fmt.Errorf(
+			"%w: signature algorithm is required",
+			ErrInvalidConfig,
+		)
 	}
 
 	if key.Key == nil {
-		return fmt.Errorf("%w: signing key is required", ErrInvalidConfig)
+		return fmt.Errorf(
+			"%w: signing key is required",
+			ErrInvalidConfig,
+		)
 	}
 
 	if key.KeyID != "" {
-		if err := validateHeaderText(headerKeyID, key.KeyID, maxKeyIDLength); err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		if err := validateHeaderValue(headerKeyID, key.KeyID, maxKeyIDLength); err != nil {
+			return fmt.Errorf(
+				"%w: %w",
+				ErrInvalidConfig,
+				err,
+			)
 		}
 	}
 
@@ -55,6 +71,21 @@ func (key SigningKey) build() (jose.SigningKey, error) {
 		Algorithm: key.Algorithm,
 		Key:       material,
 	}, nil
+}
+
+func buildSigningKeys(keys []SigningKey) ([]jose.SigningKey, error) {
+	signingKeys := make([]jose.SigningKey, len(keys))
+
+	for index, key := range keys {
+		signingKey, err := key.build()
+		if err != nil {
+			return nil, fmt.Errorf("signing key %d: %w", index, err)
+		}
+
+		signingKeys[index] = signingKey
+	}
+
+	return signingKeys, nil
 }
 
 func (key SigningKey) buildKeyMaterial() (any, error) {
@@ -105,24 +136,9 @@ func (key SigningKey) buildKeyMaterial() (any, error) {
 			Key:       material,
 			KeyID:     key.KeyID,
 			Algorithm: string(key.Algorithm),
-			Use:       "sig",
+			Use:       keyUseSignature,
 		}, nil
 	}
-}
-
-func buildSigningKeys(keys []SigningKey) ([]jose.SigningKey, error) {
-	signingKeys := make([]jose.SigningKey, len(keys))
-
-	for index, key := range keys {
-		signingKey, err := key.build()
-		if err != nil {
-			return nil, fmt.Errorf("signing key %d: %w", index, err)
-		}
-
-		signingKeys[index] = signingKey
-	}
-
-	return signingKeys, nil
 }
 
 func mergeJWKMetadata(jwk jose.JSONWebKey, key SigningKey) (jose.JSONWebKey, error) {
@@ -133,9 +149,8 @@ func mergeJWKMetadata(jwk jose.JSONWebKey, key SigningKey) (jose.JSONWebKey, err
 		)
 	}
 
-	if key.KeyID != "" &&
-		jwk.KeyID != "" &&
-		key.KeyID != jwk.KeyID {
+	// Reject conflicting key identifiers.
+	if key.KeyID != "" && jwk.KeyID != "" && key.KeyID != jwk.KeyID {
 		return jose.JSONWebKey{}, fmt.Errorf(
 			"%w: signing key ID %q conflicts with JWK key ID %q",
 			ErrInvalidConfig,
@@ -144,8 +159,8 @@ func mergeJWKMetadata(jwk jose.JSONWebKey, key SigningKey) (jose.JSONWebKey, err
 		)
 	}
 
-	if jwk.Algorithm != "" &&
-		jwk.Algorithm != string(key.Algorithm) {
+	// Reject an algorithm restriction that conflicts with the signing key.
+	if jwk.Algorithm != "" && jwk.Algorithm != string(key.Algorithm) {
 		return jose.JSONWebKey{}, fmt.Errorf(
 			"%w: JWK algorithm %q conflicts with %q",
 			ErrInvalidConfig,
@@ -154,52 +169,27 @@ func mergeJWKMetadata(jwk jose.JSONWebKey, key SigningKey) (jose.JSONWebKey, err
 		)
 	}
 
-	if jwk.Use != "" && jwk.Use != "sig" {
+	// The key must be permitted for signature operations.
+	if jwk.Use != "" && jwk.Use != keyUseSignature {
 		return jose.JSONWebKey{}, fmt.Errorf(
 			"%w: JWK use must be %q",
 			ErrInvalidConfig,
-			"sig",
+			keyUseSignature,
 		)
 	}
 
+	// Merge trusted SigningKey metadata into the JWK copy.
 	if key.KeyID != "" {
 		jwk.KeyID = key.KeyID
 	}
 
 	jwk.Algorithm = string(key.Algorithm)
-	jwk.Use = "sig"
+	jwk.Use = keyUseSignature
 
 	return jwk, nil
 }
 
 func cloneKeyMaterial(key any) any {
-	switch key := key.(type) {
-	case jose.JSONWebKey:
-		return cloneJWK(key)
-
-	case *jose.JSONWebKey:
-		if key == nil {
-			return nil
-		}
-
-		return new(cloneJWK(*key))
-
-	case jose.JSONWebKeySet:
-		return cloneJWKS(key)
-
-	case *jose.JSONWebKeySet:
-		if key == nil {
-			return nil
-		}
-
-		return new(cloneJWKS(*key))
-
-	default:
-		return cloneMutableKeyMaterial(key)
-	}
-}
-
-func cloneMutableKeyMaterial(key any) any {
 	switch key := key.(type) {
 	case []byte:
 		return bytes.Clone(key)
@@ -209,47 +199,24 @@ func cloneMutableKeyMaterial(key any) any {
 			bytes.Clone(key),
 		)
 
-	case ed25519.PublicKey:
-		return ed25519.PublicKey(
-			bytes.Clone(key),
-		)
+	case jose.JSONWebKey:
+		key.Key = cloneKeyMaterial(key.Key)
+
+		return key
+
+	case *jose.JSONWebKey:
+		if key == nil {
+			return nil
+		}
+
+		cloned := *key
+		cloned.Key = cloneKeyMaterial(key.Key)
+
+		return &cloned
 
 	default:
+		// RSA, ECDSA, opaque signers, and custom key objects are retained
+		// as-is and must be treated as immutable.
 		return key
 	}
-}
-
-func cloneJWK(key jose.JSONWebKey) jose.JSONWebKey {
-	key.Key = cloneMutableKeyMaterial(key.Key)
-
-	key.Certificates = append(
-		[]*x509.Certificate(nil),
-		key.Certificates...,
-	)
-
-	key.CertificateThumbprintSHA1 = bytes.Clone(
-		key.CertificateThumbprintSHA1,
-	)
-
-	key.CertificateThumbprintSHA256 = bytes.Clone(
-		key.CertificateThumbprintSHA256,
-	)
-
-	if key.CertificatesURL != nil {
-		key.CertificatesURL = new(*key.CertificatesURL)
-	}
-
-	return key
-}
-
-func cloneJWKS(set jose.JSONWebKeySet) jose.JSONWebKeySet {
-	cloned := jose.JSONWebKeySet{
-		Keys: make([]jose.JSONWebKey, len(set.Keys)),
-	}
-
-	for index, key := range set.Keys {
-		cloned.Keys[index] = cloneJWK(key)
-	}
-
-	return cloned
 }

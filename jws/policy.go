@@ -126,9 +126,7 @@ func (policy *requiredKeyIDsPolicy) validate() error {
 	return validatePolicyKeyIDs(policy.keyIDs)
 }
 
-func (policy *requiredKeyIDsPolicy) Evaluate(
-	results []SignatureResult,
-) error {
+func (policy *requiredKeyIDsPolicy) Evaluate(results []SignatureResult) error {
 	valid := validKeyIDs(results)
 
 	for _, keyID := range policy.keyIDs {
@@ -168,43 +166,29 @@ func (policy *thresholdPolicy) validate() error {
 	return nil
 }
 
-func (policy *thresholdPolicy) Evaluate(
-	results []SignatureResult,
-) error {
-	allowed := make(map[string]struct{}, len(policy.keyIDs))
-
-	for _, keyID := range policy.keyIDs {
-		allowed[keyID] = struct{}{}
+func (policy *thresholdPolicy) Evaluate(results []SignatureResult) error {
+	if err := policy.validate(); err != nil {
+		return err
 	}
 
-	valid := make(
-		map[string]struct{},
-		min(policy.minimum, len(results)),
-	)
+	valid := validKeyIDs(results)
+	verified := 0
 
-	for _, result := range results {
-		if !result.Valid() || result.KeyID == "" {
+	for _, keyID := range policy.keyIDs {
+		if _, exists := valid[keyID]; !exists {
 			continue
 		}
 
-		if _, exists := allowed[result.KeyID]; !exists {
-			continue
-		}
+		verified++
 
-		if _, exists := valid[result.KeyID]; exists {
-			continue
-		}
-
-		valid[result.KeyID] = struct{}{}
-
-		if len(valid) == policy.minimum {
+		if verified == policy.minimum {
 			return nil
 		}
 	}
 
 	return fmt.Errorf(
 		"verified %d unique trusted key IDs, require %d",
-		len(valid),
+		verified,
 		policy.minimum,
 	)
 }
@@ -241,6 +225,10 @@ func (policy *allOfPolicy) validate() error {
 }
 
 func (policy *allOfPolicy) Evaluate(results []SignatureResult) error {
+	if err := policy.validate(); err != nil {
+		return err
+	}
+
 	for index, nested := range policy.policies {
 		if err := nested.Evaluate(results); err != nil {
 			return fmt.Errorf(
@@ -265,7 +253,7 @@ func validatePolicyKeyIDs(keyIDs []string) error {
 	)
 
 	for index, keyID := range keyIDs {
-		if err := validateHeaderText(headerKeyID, keyID, maxKeyIDLength); err != nil {
+		if err := validateHeaderValue(headerKeyID, keyID, maxKeyIDLength); err != nil {
 			return fmt.Errorf("key ID %d: %w", index, err)
 		}
 

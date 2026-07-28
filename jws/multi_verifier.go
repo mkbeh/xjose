@@ -117,7 +117,7 @@ func (verifier *MultiVerifier) VerifyMessage(
 	ctx context.Context,
 	raw string,
 ) (MultiVerified, error) {
-	if err := validateRaw(raw, verifier.config.maxTokenSize); err != nil {
+	if err := validateRawToken(raw, verifier.config.maxTokenSize); err != nil {
 		return MultiVerified{}, err
 	}
 
@@ -148,79 +148,41 @@ func (verifier *MultiVerifier) verify(
 		return MultiVerified{}, err
 	}
 
+	// Preserve the result of every processed signature so aggregate policies
+	// can evaluate both successful and failed verification attempts.
 	results := make([]SignatureResult, 0, len(object.Signatures))
 
 	hasValidSignature := false
 
+	// The any policy is satisfied by the first valid signature, so remaining
+	// signatures do not need key resolution or cryptographic verification.
 	_, stopAfterFirstValid := verifier.config.policy.(requireAnyPolicy)
 
 	for index := range object.Signatures {
-		signature := &object.Signatures[index]
-
-		if err := ctx.Err(); err != nil {
+		result, err := verifier.verifySignature(ctx, object, index)
+		if err != nil {
+			// Context cancellation and resolver failures affect the whole
+			// operation and must not be reduced to a per-signature failure.
 			return MultiVerified{}, err
 		}
 
-		result := SignatureResult{
-			Index: index,
-		}
+		results = append(results, result)
 
-		if err := validateUnprotectedHeader(signature.Unprotected); err != nil {
-			result.Err = fmt.Errorf("signature %d: %w", index, err)
-			results = append(results, result)
-			continue
-		}
-
-		header, err := parseProtectedHeader(signature.Protected)
-		if err != nil {
-			result.Err = fmt.Errorf("signature %d: %w", index, err)
-			results = append(results, result)
-			continue
-		}
-
-		result.Header = header
-
-		if err := validateExpectedHeaders(verifier.config, header); err != nil {
-			result.Err = fmt.Errorf("signature %d: %w", index, err)
-			results = append(results, result)
-			continue
-		}
-
-		resolved, err := verifier.resolver.Resolve(ctx, header)
-		if errors.Is(err, ErrKeyNotFound) {
-			result.Err = fmt.Errorf("signature %d: %w", index, err)
-			results = append(results, result)
-			continue
-		}
-
-		if err != nil {
-			return MultiVerified{}, fmt.Errorf("resolve key for signature %d: %w", index, err)
-		}
-
-		if resolved.Key == nil {
-			return MultiVerified{}, fmt.Errorf("%w: resolver returned a nil key for signature %d", ErrVerify, index)
-		}
-
-		result.KeyID = resolved.KeyID
-
-		if err := ctx.Err(); err != nil {
-			return MultiVerified{}, err
-		}
-
-		if err := verifySignature(object, index, resolved.Key); err != nil {
-			result.Err = fmt.Errorf("%w: signature %d: %w", ErrVerify, index, err)
-			results = append(results, result)
+		if result.Err != nil {
+			// A malformed header, missing key, policy mismatch, or invalid
+			// signature affects only the current signature.
 			continue
 		}
 
 		hasValidSignature = true
-		results = append(results, result)
 
 		if stopAfterFirstValid {
 			break
 		}
 	}
 
+	// Aggregate policies cannot succeed when no signature was verified,
+	// regardless of their additional requirements.
 	if !hasValidSignature {
 		return MultiVerified{}, fmt.Errorf(
 			"%w: no signature was successfully verified",
@@ -242,14 +204,72 @@ func (verifier *MultiVerifier) verify(
 	}, nil
 }
 
-func verifySignature(
+func (verifier *MultiVerifier) verifySignature(
+	ctx context.Context,
 	object *jose.JSONWebSignature,
 	index int,
-	key any,
-) error {
-	isolated := *object
-	isolated.Signatures = []jose.Signature{object.Signatures[index]}
+) (SignatureResult, error) {
+	result := SignatureResult{
+		Index: index,
+	}
 
-	_, err := isolated.Verify(key)
-	return err
+	// Do not start processing another signature after cancellation.
+	if err := ctx.Err(); err != nil {
+		return SignatureResult{}, err
+	}
+
+	signature := &object.Signatures[index]
+
+	// Only protected headers are trusted for key resolution and policy checks.
+	header, err := parseProtectedHeader(signature.Protected)
+	if err != nil {
+		result.Err = fmt.Errorf("signature %d: %w", index, err)
+
+		return result, nil
+	}
+
+	result.Header = header
+
+	// Header policy violations invalidate this signature but do not prevent
+	// other signatures in the same JWS from being evaluated.
+	if err := validateHeaderPolicy(verifier.config, header); err != nil {
+		result.Err = fmt.Errorf("signature %d: %w", index, err)
+
+		return result, nil
+	}
+
+	resolved, err := verifier.resolver.Resolve(ctx, header)
+	if errors.Is(err, ErrKeyNotFound) {
+		// An unavailable key is local to this signature. Other signatures may
+		// reference keys that the resolver can provide.
+		result.Err = fmt.Errorf("signature %d: %w", index, err)
+
+		return result, nil
+	}
+
+	if err != nil {
+		// Resolver infrastructure failures affect the whole verification
+		// operation and must be returned immediately.
+		return SignatureResult{}, fmt.Errorf("resolve key for signature %d: %w", index, err)
+	}
+
+	if resolved.Key == nil {
+		return SignatureResult{}, fmt.Errorf("%w: resolver returned a nil key for signature %d", ErrVerify, index)
+	}
+
+	result.KeyID = resolved.KeyID
+
+	// go-jose verifies every signature stored in the object. Isolate the
+	// current signature so each recipient key is applied only to its own
+	// signature entry.
+	isolated := *object
+	isolated.Signatures = []jose.Signature{
+		object.Signatures[index],
+	}
+
+	if _, err := isolated.Verify(resolved.Key); err != nil {
+		result.Err = fmt.Errorf("%w: signature %d: %w", ErrVerify, index, err)
+	}
+
+	return result, nil
 }

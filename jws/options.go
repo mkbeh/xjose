@@ -2,7 +2,6 @@ package jws
 
 import (
 	"fmt"
-	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -58,7 +57,12 @@ func WithType(value string) Option {
 func (option typeOption) apply(config *config) error {
 	value := string(option)
 
+	if err := validateHeaderValue(jose.HeaderType, value, maxTypeLength); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+
 	config.typ = value
+
 	setHeader(
 		config,
 		jose.HeaderType,
@@ -79,7 +83,12 @@ func WithContentType(value string) Option {
 func (option contentTypeOption) apply(config *config) error {
 	value := string(option)
 
+	if err := validateHeaderValue(jose.HeaderContentType, value, maxContentTypeLength); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+
 	config.cty = value
+
 	setHeader(
 		config,
 		jose.HeaderContentType,
@@ -275,33 +284,6 @@ func (config config) validateMultiVerifier() error {
 			ErrInvalidConfig,
 		)
 	}
-	return nil
-}
-
-func validateHeaderText(name jose.HeaderKey, value string, maxLength int) error {
-	if value == "" {
-		return fmt.Errorf("%s header is empty", name)
-	}
-	if !utf8.ValidString(value) {
-		return fmt.Errorf("%s header is not valid UTF-8", name)
-	}
-	if len(value) > maxLength {
-		return fmt.Errorf(
-			"%s header is %d bytes, limit is %d",
-			name,
-			len(value),
-			maxLength,
-		)
-	}
-	for _, character := range value {
-		if character < 0x20 || character == 0x7f {
-			return fmt.Errorf(
-				"%s header contains a control character",
-				name,
-			)
-		}
-	}
-
 	return nil
 }
 

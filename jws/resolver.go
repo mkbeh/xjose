@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // ResolvedKey contains trusted verification key material and its canonical
@@ -48,6 +48,14 @@ type staticResolver struct {
 	key any
 }
 
+type jwkResolver struct {
+	key jose.JSONWebKey
+}
+
+type jwksResolver struct {
+	keysByID map[string][]jose.JSONWebKey
+}
+
 func newStaticResolver(key any) (KeyResolver, error) {
 	if key == nil {
 		return nil, fmt.Errorf(
@@ -56,65 +64,100 @@ func newStaticResolver(key any) (KeyResolver, error) {
 		)
 	}
 
-	key = cloneKeyMaterial(key)
-	if key == nil {
-		return nil, fmt.Errorf(
-			"%w: verification key is nil",
-			ErrInvalidConfig,
-		)
-	}
-
-	return staticResolver{
-		key: key,
-	}, nil
-}
-
-func (resolver staticResolver) Resolve(_ context.Context, header Header) (ResolvedKey, error) {
-	switch key := resolver.key.(type) {
+	switch key := key.(type) {
 	case jose.JSONWebKey:
-		return resolveJWK(key, header)
+		return newJWKResolver(key)
 
 	case *jose.JSONWebKey:
 		if key == nil {
-			return ResolvedKey{}, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"%w: verification JWK is nil",
 				ErrInvalidConfig,
 			)
 		}
 
-		return resolveJWK(*key, header)
+		return newJWKResolver(*key)
 
 	case jose.JSONWebKeySet:
-		return resolveJWKS(&key, header)
+		return newJWKSResolver(key), nil
 
 	case *jose.JSONWebKeySet:
 		if key == nil {
-			return ResolvedKey{}, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"%w: verification JWKS is nil",
 				ErrInvalidConfig,
 			)
 		}
 
-		return resolveJWKS(key, header)
+		return newJWKSResolver(*key), nil
 
 	default:
-		return ResolvedKey{
-			Key: key,
+		key = cloneKeyMaterial(key)
+		if key == nil {
+			return nil, fmt.Errorf(
+				"%w: verification key is nil",
+				ErrInvalidConfig,
+			)
+		}
+
+		return staticResolver{
+			key: key,
 		}, nil
 	}
 }
 
-func resolveJWK(key jose.JSONWebKey, header Header) (ResolvedKey, error) {
+func newJWKResolver(key jose.JSONWebKey) (KeyResolver, error) {
+	key.Key = cloneKeyMaterial(key.Key)
+
 	if key.Key == nil {
-		return ResolvedKey{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"%w: verification JWK key material is nil",
 			ErrInvalidConfig,
 		)
 	}
 
-	if header.KeyID != "" &&
-		key.KeyID != "" &&
-		header.KeyID != key.KeyID {
+	return jwkResolver{
+		key: key,
+	}, nil
+}
+
+func newJWKSResolver(set jose.JSONWebKeySet) KeyResolver {
+	keysByID := make(
+		map[string][]jose.JSONWebKey,
+		len(set.Keys),
+	)
+
+	for _, key := range set.Keys {
+		// Keys without an identity cannot participate in kid-based lookup.
+		if key.KeyID == "" || key.Key == nil {
+			continue
+		}
+
+		// A JWKS may contain both signature and encryption keys.
+		if key.Use != "" && key.Use != keyUseSignature {
+			continue
+		}
+
+		key.Key = cloneKeyMaterial(key.Key)
+
+		keysByID[key.KeyID] = append(keysByID[key.KeyID], key)
+	}
+
+	return jwksResolver{
+		keysByID: keysByID,
+	}
+}
+
+func (resolver staticResolver) Resolve(_ context.Context, _ Header) (ResolvedKey, error) {
+	return ResolvedKey{
+		Key: resolver.key,
+	}, nil
+}
+
+func (resolver jwkResolver) Resolve(_ context.Context, header Header) (ResolvedKey, error) {
+	key := resolver.key
+
+	if header.KeyID != "" && key.KeyID != "" && header.KeyID != key.KeyID {
 		return ResolvedKey{}, fmt.Errorf(
 			"%w: key ID %q not found",
 			ErrKeyNotFound,
@@ -122,8 +165,7 @@ func resolveJWK(key jose.JSONWebKey, header Header) (ResolvedKey, error) {
 		)
 	}
 
-	if key.Algorithm != "" &&
-		key.Algorithm != string(header.Algorithm) {
+	if key.Algorithm != "" && key.Algorithm != string(header.Algorithm) {
 		return ResolvedKey{}, fmt.Errorf(
 			"%w: key %q does not allow algorithm %q",
 			ErrKeyNotFound,
@@ -132,7 +174,7 @@ func resolveJWK(key jose.JSONWebKey, header Header) (ResolvedKey, error) {
 		)
 	}
 
-	if key.Use != "" && key.Use != "sig" {
+	if key.Use != "" && key.Use != keyUseSignature {
 		return ResolvedKey{}, fmt.Errorf(
 			"%w: key %q is not a signature key",
 			ErrKeyNotFound,
@@ -146,7 +188,7 @@ func resolveJWK(key jose.JSONWebKey, header Header) (ResolvedKey, error) {
 	}, nil
 }
 
-func resolveJWKS(set *jose.JSONWebKeySet, header Header) (ResolvedKey, error) {
+func (resolver jwksResolver) Resolve(_ context.Context, header Header) (ResolvedKey, error) {
 	if header.KeyID == "" {
 		return ResolvedKey{}, fmt.Errorf(
 			"%w: protected kid header is required for JWKS",
@@ -154,29 +196,20 @@ func resolveJWKS(set *jose.JSONWebKeySet, header Header) (ResolvedKey, error) {
 		)
 	}
 
-	var matched *jose.JSONWebKey
+	candidates := resolver.keysByID[header.KeyID]
 
-	for index := range set.Keys {
-		key := &set.Keys[index]
+	var matchedKey *jose.JSONWebKey
 
-		if key.KeyID != header.KeyID {
+	for index := range candidates {
+		key := &candidates[index]
+
+		// Ignore keys restricted to a different signature algorithm.
+		if key.Algorithm != "" && key.Algorithm != string(header.Algorithm) {
 			continue
 		}
 
-		if key.Key == nil {
-			continue
-		}
-
-		if key.Algorithm != "" &&
-			key.Algorithm != string(header.Algorithm) {
-			continue
-		}
-
-		if key.Use != "" && key.Use != "sig" {
-			continue
-		}
-
-		if matched != nil {
+		// More than one applicable key makes resolution ambiguous.
+		if matchedKey != nil {
 			return ResolvedKey{}, fmt.Errorf(
 				"%w: key ID %q matches multiple signature keys for algorithm %q",
 				ErrInvalidConfig,
@@ -185,10 +218,10 @@ func resolveJWKS(set *jose.JSONWebKeySet, header Header) (ResolvedKey, error) {
 			)
 		}
 
-		matched = key
+		matchedKey = key
 	}
 
-	if matched == nil {
+	if matchedKey == nil {
 		return ResolvedKey{}, fmt.Errorf(
 			"%w: key ID %q has no matching signature key",
 			ErrKeyNotFound,
@@ -197,7 +230,7 @@ func resolveJWKS(set *jose.JSONWebKeySet, header Header) (ResolvedKey, error) {
 	}
 
 	return ResolvedKey{
-		KeyID: matched.KeyID,
-		Key:   *matched,
+		KeyID: matchedKey.KeyID,
+		Key:   *matchedKey,
 	}, nil
 }

@@ -70,29 +70,3 @@ func TestProtectedHeaderRejectsMalformedOrUnsupportedValues(t *testing.T) {
 		}
 	}
 }
-
-func TestUnprotectedHeaderValidation(t *testing.T) {
-	requireNoError(t, validateUnprotectedHeader(jose.Header{
-		ExtraHeaders: map[jose.HeaderKey]any{
-			"custom": "value",
-		},
-	}))
-
-	tests := []jose.Header{
-		{Algorithm: string(jose.HS256)},
-		{KeyID: "key-1"},
-		{Nonce: "nonce"},
-		{JSONWebKey: &jose.JSONWebKey{Key: []byte("secret")}},
-		{ExtraHeaders: map[jose.HeaderKey]any{jose.HeaderType: "example+jws"}},
-		{ExtraHeaders: map[jose.HeaderKey]any{jose.HeaderContentType: "application/json"}},
-		{ExtraHeaders: map[jose.HeaderKey]any{headerCritical: []string{"custom"}}},
-		{ExtraHeaders: map[jose.HeaderKey]any{headerBase64: false}},
-	}
-
-	for index, header := range tests {
-		err := validateUnprotectedHeader(header)
-		if !errors.Is(err, ErrMalformedToken) {
-			t.Errorf("case %d error = %v, want ErrMalformedToken", index, err)
-		}
-	}
-}

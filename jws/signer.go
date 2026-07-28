@@ -64,7 +64,7 @@ func (signer *Signer) Sign(payload []byte) (string, error) {
 		)
 	}
 
-	if err := validateRaw(raw, signer.config.maxTokenSize); err != nil {
+	if err := validateRawToken(raw, signer.config.maxTokenSize); err != nil {
 		return "", err
 	}
 
@@ -91,7 +91,7 @@ func (signer *Signer) SignDetached(payload []byte) (string, error) {
 		)
 	}
 
-	if err := validateRaw(raw, signer.config.maxTokenSize); err != nil {
+	if err := validateRawToken(raw, signer.config.maxTokenSize); err != nil {
 		return "", err
 	}
 
@@ -110,13 +110,8 @@ func (signer *Signer) sign(payload []byte) (*jose.JSONWebSignature, error) {
 		return nil, ErrMissingPayload
 	}
 
-	if len(payload) > signer.config.maxPayloadSize {
-		return nil, fmt.Errorf(
-			"%w: got %d bytes, limit is %d",
-			ErrPayloadTooLarge,
-			len(payload),
-			signer.config.maxPayloadSize,
-		)
+	if err := validatePayloadSize(payload, signer.config.maxPayloadSize); err != nil {
+		return nil, err
 	}
 
 	object, err := signer.backend.Sign(payload)

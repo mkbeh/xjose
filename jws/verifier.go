@@ -109,7 +109,7 @@ func (verifier *Verifier) VerifyMessage(
 	ctx context.Context,
 	raw string,
 ) (Verified, error) {
-	if err := validateRaw(raw, verifier.config.maxTokenSize); err != nil {
+	if err := validateRawToken(raw, verifier.config.maxTokenSize); err != nil {
 		return Verified{}, err
 	}
 
@@ -132,7 +132,7 @@ func (verifier *Verifier) VerifyDetached(
 	raw string,
 	payload []byte,
 ) (Verified, error) {
-	if err := validateRaw(raw, verifier.config.maxTokenSize); err != nil {
+	if err := validateRawToken(raw, verifier.config.maxTokenSize); err != nil {
 		return Verified{}, err
 	}
 
@@ -163,6 +163,8 @@ func (verifier *Verifier) verify(
 		)
 	}
 
+	// Inspect the untrusted payload only to enforce the configured resource
+	// limit before key resolution and cryptographic verification.
 	payload := object.UnsafePayloadWithoutVerification()
 	if err := validatePayloadSize(payload, verifier.config.maxPayloadSize); err != nil {
 		return Verified{}, err
@@ -170,16 +172,16 @@ func (verifier *Verifier) verify(
 
 	signature := object.Signatures[0]
 
-	if err := validateUnprotectedHeader(signature.Unprotected); err != nil {
-		return Verified{}, err
-	}
-
+	// Only protected headers participate in key resolution and policy checks.
+	// Their values remain untrusted until signature verification succeeds.
 	header, err := parseProtectedHeader(signature.Protected)
 	if err != nil {
 		return Verified{}, err
 	}
 
-	if err := validateExpectedHeaders(verifier.config, header); err != nil {
+	// Reject header-policy mismatches before invoking a potentially external
+	// resolver.
+	if err := validateHeaderPolicy(verifier.config, header); err != nil {
 		return Verified{}, err
 	}
 

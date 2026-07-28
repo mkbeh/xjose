@@ -6,7 +6,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-func validateRaw(raw string, maxSize int) error {
+func validateRawToken(raw string, maxSize int) error {
 	if raw == "" {
 		return fmt.Errorf(
 			"%w: serialized JWS is empty",
@@ -14,11 +14,11 @@ func validateRaw(raw string, maxSize int) error {
 		)
 	}
 
-	return validateRawSize(raw, maxSize)
+	return validateRawTokenSize(raw, maxSize)
 }
 
-func validateRawSize(raw string, maxSize int) error {
-	if len(raw) > maxSize {
+func validateRawTokenSize(raw string, maxSize int) error {
+	if exceedsLimit(len(raw), maxSize) {
 		return fmt.Errorf(
 			"%w: got %d bytes, limit is %d",
 			ErrTokenTooLarge,
@@ -39,7 +39,7 @@ func validatePayload(payload []byte, maxSize int) error {
 }
 
 func validatePayloadSize(payload []byte, maxSize int) error {
-	if len(payload) > maxSize {
+	if exceedsLimit(len(payload), maxSize) {
 		return fmt.Errorf(
 			"%w: got %d bytes, limit is %d",
 			ErrPayloadTooLarge,
@@ -51,10 +51,7 @@ func validatePayloadSize(payload []byte, maxSize int) error {
 	return nil
 }
 
-func validateSignatures(
-	object *jose.JSONWebSignature,
-	maxSignatures int,
-) error {
+func validateSignatures(object *jose.JSONWebSignature, maxSignatures int) error {
 	if object == nil || len(object.Signatures) == 0 {
 		return fmt.Errorf(
 			"%w: JWS contains no signatures",
@@ -62,7 +59,7 @@ func validateSignatures(
 		)
 	}
 
-	if len(object.Signatures) > maxSignatures {
+	if exceedsLimit(len(object.Signatures), maxSignatures) {
 		return fmt.Errorf(
 			"%w: got %d signatures, limit is %d",
 			ErrTooManySignatures,
@@ -72,4 +69,9 @@ func validateSignatures(
 	}
 
 	return nil
+}
+
+// exceedsLimit reports whether size exceeds limit.
+func exceedsLimit(size, limit int) bool {
+	return size > limit
 }
