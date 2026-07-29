@@ -29,27 +29,19 @@ The modules can be used independently or composed through their public APIs.
 
 ```mermaid
 flowchart LR
-    App[Application]
-
     subgraph Keys["Public key distribution"]
-        JWK[JWK<br/>Public keys and key sets]
+        JWK["JWK<br>Public keys and key sets"]
     end
-
     subgraph Signing["Signing and verification"]
-        direction TB
-        JWT[JWT<br/>Signed claims]
-        JWS[JWS<br/>Signed payloads]
+        JWT["JWT<br>Signed claims"]
+        JWS["JWS<br>Signed payloads"]
     end
-
-    JWE[JWE<br/>Encrypted payloads]
-    App --> JWT
+    App["Application"] --> JWT & JWE["JWE<br>Encrypted payloads"] & JWK
+    JWK -- Keys and resolver --> JWT
+    JWK -. Public JWK .-> JWS
+    JWT -- Nested JWT --> JWE
+    JWS -. Serialized JWS .-> JWE
     App --> JWS
-    App --> JWE
-    App --> JWK
-    JWK -->|Keys and resolver| JWT
-    JWK -.->|Public JWK| JWS
-    JWT -->|Nested JWT| JWE
-    JWS -.->|Serialized JWS| JWE
 ```
 
 Solid arrows between modules represent explicit integration provided by their public APIs. Dashed arrows represent
@@ -481,7 +473,6 @@ flowchart TB
     Shared[Shared JWE content<br/>protected header, IV, ciphertext, tag, optional AAD]
 
     subgraph Recipients["Recipient entries"]
-        direction LR
         R1[Recipient 1<br/>alg, kid, encrypted key]
         R2[Recipient 2<br/>alg, kid, encrypted key]
         RN[Recipient N<br/>alg, kid, encrypted key]
@@ -511,7 +502,6 @@ recovered JWT.
 ```mermaid
 flowchart LR
     subgraph Sender
-        direction LR
         Claims[Application-defined claims]
         Sign[Sign JWT]
         Signed[Signed Compact JWT]
@@ -524,7 +514,6 @@ flowchart LR
     end
 
     subgraph Receiver
-        direction LR
         Decrypt[Decrypt and authenticate JWE]
         Recovered[Recovered Compact JWT]
         Verify[Verify JWT signature and policy]
