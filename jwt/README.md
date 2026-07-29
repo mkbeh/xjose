@@ -159,13 +159,13 @@ Configure the signer once, then use it to issue tokens:
 <!-- @formatter:off -->
 
 ```go
-signer, err := jwt.NewSigner(
+signer, _ := jwt.NewSigner(
 	signingKey,
 	jwt.WithType("access+jwt"),
 	jwt.WithMaxTokenSize(32 << 10),
 )
 
-token, err := signer.Sign(ctx, claims)
+token, _ := signer.Sign(ctx, claims)
 ```
 
 <!-- @formatter:on -->
@@ -208,7 +208,7 @@ Use `VerifyToken` when the application also needs the verified `alg`, `kid`, and
 ```go
 claims := new(AccessClaims)
 
-header, err := verifier.VerifyToken(ctx, token, claims)
+header, _ := verifier.VerifyToken(ctx, token, claims)
 ```
 
 <!-- @formatter:on -->
@@ -250,7 +250,7 @@ The following configuration is suitable for short-lived access tokens issued by 
 <!-- @formatter:off -->
 
 ```go
-verifier, err := jwt.NewVerifier(
+verifier, _ := jwt.NewVerifier(
 	resolver,
 
 	// Trust only the expected signing algorithm.
@@ -303,13 +303,13 @@ Use a single named key when the verifier trusts one signing key:
 <!-- @formatter:off -->
 
 ```go
-verificationKey, err := jwt.NewVerificationKey(
+verificationKey, _ := jwt.NewVerificationKey(
 	"key-2026-07",
 	gojwt.SigningMethodPS256,
 	publicKey,
 )
 
-verifier, err := jwt.NewVerifier(
+verifier, _ := jwt.NewVerifier(
 	verificationKey,
 	jwt.WithMethods(gojwt.SigningMethodPS256),
 )
@@ -323,7 +323,7 @@ an anonymous key by passing an empty key ID:
 <!-- @formatter:off -->
 
 ```go
-anonymousKey, err := jwt.NewVerificationKey(
+anonymousKey, _ := jwt.NewVerificationKey(
 	"",
 	gojwt.SigningMethodPS256,
 	publicKey,
@@ -337,9 +337,9 @@ For local key rotation, place the active and recently retired named keys in a `S
 <!-- @formatter:off -->
 
 ```go
-keySet, err := jwt.NewStaticKeySet(currentKey, previousKey)
+keySet, _ := jwt.NewStaticKeySet(currentKey, previousKey)
 
-verifier, err := jwt.NewVerifier(
+verifier, _ := jwt.NewVerifier(
 	keySet,
 	jwt.WithMethods(gojwt.SigningMethodPS256),
 )
@@ -370,7 +370,7 @@ resolver := jwt.KeyResolverFunc(
 	},
 )
 
-verifier, err := jwt.NewVerifier(
+verifier, _ := jwt.NewVerifier(
 	resolver,
 	jwt.WithMethods(gojwt.SigningMethodPS256),
 )
@@ -394,7 +394,7 @@ Cloud KMS, HashiCorp Vault, or an HSM:
 <!-- @formatter:off -->
 
 ```go
-signingKey, err := jwt.NewExternalSigningKey(
+signingKey, _ := jwt.NewExternalSigningKey(
 	"kms-key-2026-07",
 	gojwt.SigningMethodEdDSA,
 	publicKey,
@@ -402,9 +402,6 @@ signingKey, err := jwt.NewExternalSigningKey(
 		return kmsClient.Sign(ctx, signingInput)
 	},
 )
-if err != nil {
-	return err
-}
 
 // Obtain the corresponding verification key.
 verificationKey := signingKey.VerificationKey()
@@ -440,8 +437,8 @@ Private keys can be parsed from PKCS#8, PKCS#1 RSA, and SEC1 ECDSA encodings:
 
 <!-- @formatter:off -->
 ```go
-privateKey, err := jwt.ParsePrivateKeyPEM(privateKeyPEM)
-privateKey, err := jwt.ParsePrivateKeyDER(privateKeyDER)
+privateKey, _ := jwt.ParsePrivateKeyPEM(privateKeyPEM)
+privateKey, _ := jwt.ParsePrivateKeyDER(privateKeyDER)
 ```
 <!-- @formatter:on -->
 
@@ -449,8 +446,8 @@ Public keys can be parsed from PKIX SubjectPublicKeyInfo, PKCS#1 RSA, and X.509 
 
 <!-- @formatter:off -->
 ```go
-publicKey, err := jwt.ParsePublicKeyPEM(publicKeyPEM)
-publicKey, err := jwt.ParsePublicKeyDER(publicKeyDER)
+publicKey, _ := jwt.ParsePublicKeyPEM(publicKeyPEM)
+publicKey, _ := jwt.ParsePublicKeyDER(publicKeyDER)
 ```
 <!-- @formatter:on -->
 
@@ -464,8 +461,8 @@ Private keys are serialized as unencrypted PKCS#8:
 
 <!-- @formatter:off -->
 ```go
-privateKeyPEM, err := jwt.MarshalPrivateKeyPEM(privateKey)
-privateKeyDER, err := jwt.MarshalPrivateKeyDER(privateKey)
+privateKeyPEM, _ := jwt.MarshalPrivateKeyPEM(privateKey)
+privateKeyDER, _ := jwt.MarshalPrivateKeyDER(privateKey)
 ```
 <!-- @formatter:on -->
 
@@ -473,8 +470,8 @@ Public keys are serialized as PKIX SubjectPublicKeyInfo:
 
 <!-- @formatter:off -->
 ```go
-publicKeyPEM, err := jwt.MarshalPublicKeyPEM(publicKey)
-publicKeyDER, err := jwt.MarshalPublicKeyDER(publicKey)
+publicKeyPEM, _ := jwt.MarshalPublicKeyPEM(publicKey)
+publicKeyDER, _ := jwt.MarshalPublicKeyDER(publicKey)
 ```
 <!-- @formatter:on -->
 

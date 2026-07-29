@@ -121,10 +121,10 @@ Detached payload bytes must be transported separately from the serialized signat
 
 ```go
 // Embed the payload in the Compact JWS.
-raw, err := signer.Sign(payload)
+raw, _ := signer.Sign(payload)
 
 // Create a Compact JWS with an empty payload segment.
-detached, err := signer.SignDetached(payload)
+detached, _ := signer.SignDetached(payload)
 ```
 
 <!-- @formatter:on -->
@@ -132,13 +132,13 @@ detached, err := signer.SignDetached(payload)
 For a JWS with an embedded payload, use `Verify` when only the authenticated payload is needed:
 
 ```go
-verifiedPayload, err := verifier.Verify(ctx, raw)
+verifiedPayload, _ := verifier.Verify(ctx, raw)
 ```
 
 Use `VerifyMessage` when the application also needs the trusted key identity and protected header:
 
 ```go
-verified, err := verifier.VerifyMessage(ctx, raw)
+verified, _ := verifier.VerifyMessage(ctx, raw)
 
 payload := verified.Payload
 keyID := verified.KeyID
@@ -148,7 +148,7 @@ header := verified.Header
 A detached JWS must be verified against the exact external payload bytes:
 
 ```go
-detachedVerified, err := verifier.VerifyDetached(ctx, detached, payload)
+detachedVerified, _ := verifier.VerifyDetached(ctx, detached, payload)
 ```
 
 `VerifyDetached` returns the authenticated payload together with the trusted key identity and protected header.
@@ -176,7 +176,7 @@ Use functional options to configure standard and application-specific protected 
 <!-- @formatter:off -->
 
 ```go
-signer, err := jws.NewSigner(
+signer, _ := jws.NewSigner(
 	signingKey,
 	jws.WithType("approval+jws"),
 	jws.WithContentType("application/json"),
@@ -402,7 +402,7 @@ KMS, HashiCorp Vault, an HSM, or a PKCS#11 adapter:
 <!-- @formatter:off -->
 
 ```go
-signer, err := jws.NewSigner(
+signer, _ := jws.NewSigner(
 	jws.SigningKey{
 		Algorithm: jose.PS256,
 		Key:       opaqueSigner,
