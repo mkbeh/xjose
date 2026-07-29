@@ -1,0 +1,77 @@
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  analyze:
+    name: Analyze Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: jwt/go.mod
+          cache: false
+
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          build-mode: manual
+          queries: security-extended
+
+      - name: Clear Go build cache
+        run: go clean -cache
+
+      - name: Build modules
+        shell: bash
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          set -euo pipefail
+
+          for module in jwt jws jwe jwk; do
+            echo "::group::${module}"
+
+            (
+              cd "${module}"
+              go build -mod=readonly ./...
+            )
+
+            echo "::endgroup::"
+          done
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:go

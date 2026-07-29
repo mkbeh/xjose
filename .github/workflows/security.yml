@@ -1,0 +1,74 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - jwt
+          - jws
+          - jwe
+          - jwk
+          - doctests
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        with:
+          repo-checkout: false
+          work-dir: ${{ matrix.module }}
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache: false
+          go-package: ./...
+
+  result:
+    name: Security
+    if: always()
+    needs:
+      - govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check security jobs
+        run: test "${{ needs.govulncheck.result }}" = "success"

@@ -1,0 +1,39 @@
+# Examples
+
+This directory contains runnable examples demonstrating the main features and usage patterns.
+
+| Example                            | Demonstrates                                                                                                                  |
+|:-----------------------------------|:------------------------------------------------------------------------------------------------------------------------------|
+| [`jwt_hmac`](jwt_hmac)             | Signing and verifying typed JWT claims with `HS256` and a shared secret                                                       |
+| [`jwt_asymmetric`](jwt_asymmetric) | Asymmetric JWT signing with `PS256`, separate private and public keys, and a static verification key set                      |
+| [`jwk`](../examples/jwk)           | Exporting a public verification key as JWK, calculating its RFC 7638 thumbprint, and converting it back                       |
+| [`jwk_set`](../examples/jwk_set)   | Publishing current and previous verification keys as a JWK Set and selecting the correct key by `kid` during                  |
+| [`jws`](jws)                       | Signing and verifying arbitrary byte payloads with Compact and detached JWS                                                   |
+| [`jws_multi`](jws_multi)           | Signing one payload with multiple keys, resolving trusted verification keys, and enforcing an identity-based signature policy |
+| [`jws_opaque`](jws_opaque)         | Signing through `jose.OpaqueSigner` without exposing private key operations to the JWS API                                    |
+| [`jwe`](jwe)                       | Creating a nested JWT with sign-then-encrypt and validating it with decrypt-then-verify                                       |
+| [`jwe_multi`](jwe_multi)           | Encrypting one payload for multiple recipients with JWE JSON Serialization and Additional Authenticated Data                  |
+
+## Running the examples
+
+Each example is a standalone Go module connected through the repository's `go.work` file.
+
+Run an example from its directory:
+
+```shell
+cd jwt_hmac
+go run .
+```
+
+Or run it from the repository root:
+
+```shell
+go run ./examples/jwt_hmac
+```
+
+Replace `jwt_hmac` with the directory name of another example.
+
+> [!NOTE]
+> The examples generate temporary cryptographic keys at startup and do not require external services. Refer to the
+> README in the corresponding example directory for the demonstrated security model, expected output, and production
+> key-management considerations.

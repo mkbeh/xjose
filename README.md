@@ -1,148 +1,106 @@
 <div align="center">
 
-# xjwt
+# JOSE toolkit for Go
 
-**Lightweight JWT wrapper for Go, built on top of [golang-jwt/jwt](https://github.com/golang-jwt/jwt).**
+**JOSE modules built on top of [golang-jwt/jwt](https://github.com/golang-jwt/jwt)
+and  [go-jose](https://github.com/go-jose/go-jose).**
 
-![Go Version](https://img.shields.io/badge/go-1.26%2B-blue)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Go](https://github.com/mkbeh/xjose/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/mkbeh/xjose/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/mkbeh/xjose/branch/main/graph/badge.svg)](https://codecov.io/gh/mkbeh/xjose)
 
 </div>
 
-`xjwt` is a lightweight wrapper around [`golang-jwt/jwt`](https://github.com/golang-jwt/jwt) that provides a clean API
-for creating and validating JSON Web Tokens.
+`xjose` is a modular Go toolkit for signing, verification, encryption, decryption, and public-key distribution based on
+the JSON Object Signing and Encryption (JOSE) standards.
+
+The project builds on [golang-jwt/jwt](https://github.com/golang-jwt/jwt)
+and [go-jose](https://github.com/go-jose/go-jose), adding explicit trust configuration, strict algorithm allowlists,
+resolver-based key selection, multi-signature and multi-recipient workflows, external signing support, and consistent
+validation policies.
 
 ## Features
 
-* **Tokens**: Create signed JWTs with custom claims.
-* **Claims**: Parse and validate tokens into typed claim structs.
-* **Bearer**: Built-in `Bearer <token>` extraction and validation.
-* **Signing**: Configurable signing method with `HS256` by default.
-* **Errors**: Exported errors for invalid tokens, schemes, signatures, and claims.
-* **Expiration**: Helper for setting `exp` in registered claims.
+* **Explicit trust configuration:** Configure accepted algorithms, key sources, token and content types, and validation
+  policies through trusted application settings rather than untrusted input.
+* **Strict verification:** Enforce algorithm allowlists, registered-claim validation, protected-header requirements, and
+  application-defined signature policies.
+* **Flexible key management:** Use static keys, local key sets, custom resolvers, JWK/JWKS material, and
+  application-managed key infrastructure.
+* **Multi-party workflows:** Create and verify JWS objects with multiple independent signatures and JWE objects with
+  multiple recipients under explicit application policies.
+* **External signing:** Integrate cloud KMS, HashiCorp Vault, hardware security modules, PKCS#11 adapters, and remote
+  signing services.
+* **Public-key distribution:** Parse, validate, publish, and resolve public JWK and JWKS documents with deterministic
+  key selection and RFC 7638 thumbprints.
+* **Consistent validation policies:** Apply the same trust and validation model across JWT, JWS, JWE, JWK, and JWKS
+  workflows.
 
 ## Installation
 
-```bash id="b20l9e"
-go get github.com/mkbeh/xjwt
+This repository contains multiple Go modules that are installed and versioned independently.
+
+Install only the modules required by your application.
+
+**[JWT](jwt) — JSON Web Token**
+
+Issue and verify signed tokens with structured claims and configurable validation policies:
+
+```shell
+go get github.com/mkbeh/xjose/jwt
 ```
 
-## Quick Start
+**[JWS](jws) — JSON Web Signature**
 
-The example below demonstrates how to initialize the token manager, generate a signed JWT with custom claims, and parse
-it back using a `Bearer` token string.
+Sign and verify arbitrary payloads using Compact, detached, and multi-signature serialization:
 
-<!-- @formatter:off -->
-```go
-package main
-
-import (
-	"fmt"
-	"log"
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mkbeh/xjwt"
-)
-
-type MyClaims struct {
-	jwt.RegisteredClaims
-	UserID string `json:"user_id"`
-}
-
-func main() {
-	tm, err := xjwt.New(
-		xjwt.WithSecretKey([]byte("secret")),
-	)
-	if err != nil {
-		log.Fatalf("failed to init token manager: %v", err)
-	}
-
-	token, err := tm.CreateWithClaims(&MyClaims{
-		UserID: "42",
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: xjwt.AddExpiresAt(time.Hour),
-		},
-	})
-	if err != nil {
-		log.Fatalf("failed to create token: %v", err)
-	}
-
-	fmt.Println("token:", token)
-
-	claims := &MyClaims{}
-	err = tm.ParseWithClaims("Bearer "+token, claims)
-	if err != nil {
-		log.Fatalf("failed to parse token: %v", err)
-	}
-
-	fmt.Println("user_id:", claims.UserID)
-}
-
+```shell
+go get github.com/mkbeh/xjose/jws
 ```
-<!-- @formatter:on -->
 
-More examples: [examples/](https://github.com/mkbeh/xjwt/tree/main/examples)
+**[JWE](jwe) — JSON Web Encryption**
 
-## Signing Method
+Encrypt and decrypt payloads using Compact, multi-recipient, and nested JWT workflows:
 
-By default, `xjwt` uses `HS256`.
-
-Use `WithSigningMethod` to configure any other signing method supported by `golang-jwt/jwt`.
-
-<!-- @formatter:off -->
-```go
-tm, err := xjwt.New(
-	xjwt.WithSecretKey([]byte("secret")),
-	xjwt.WithSigningMethod(jwt.SigningMethodHS512),
-)
-if err != nil {
-	log.Fatalf("failed to initialize token manager: %v", err)
-}
+```shell
+go get github.com/mkbeh/xjose/jwe
 ```
-<!-- @formatter:on -->
 
-During parsing, `xjwt` automatically validates that the incoming token's signing algorithm matches the configured method
-to prevent algorithm confusion attacks.
+**[JWK](jwk) — JSON Web Key and JWK Set**
 
-## Error Handling
+Parse, validate, publish, identify, and resolve public keys and key sets:
 
-`xjwt` wraps validation failures with exported errors, allowing you to easily inspect specific failure reasons using
-standard `errors.Is`.
-
-<!-- @formatter:off -->
-```go
-claims := &MyClaims{}
-err := tm.ParseWithClaims(tokenString, claims)
-if err != nil {
-	if errors.Is(err, xjwt.ErrTokenRestriction) {
-		// token is expired or has invalid claims (e.g., nbf, aud)
-		return nil, ErrExpired
-	}
-	if errors.Is(err, xjwt.ErrInvalidSignature) {
-		// signature verification failed
-		return nil, ErrBadSignature
-	}
-
-	return nil, fmt.Errorf("failed to parse token: %w", err)
-}
+```shell
+go get github.com/mkbeh/xjose/jwk
 ```
-<!-- @formatter:on -->
 
-### Exported Errors
+Each module has its own version, dependencies, and documentation.
 
-| Error | Description |
-| :--- | :--- |
-| `ErrTokenSigned` | Token signing failed. |
-| `ErrInvalidToken` | Token is malformed, missing, or invalid. |
-| `ErrInvalidScheme` | Authorization scheme is not `Bearer`. |
-| `ErrInvalidSignature` | Token signature is invalid or algorithm mismatches. |
-| `ErrTokenRestriction` | Token claims are invalid (e.g., expired). |
+## Examples
+
+See the [examples](examples) directory for usage examples:
+
+| Module  | Examples                                                                                                          |
+|:-------:|-------------------------------------------------------------------------------------------------------------------|
+| **JWT** | [HMAC Signing](examples/jwt_hmac)<br>[Asymmetric Signing](examples/jwt_asymmetric)                                |
+| **JWS** | [Compact JWS](examples/jws)<br>[Multiple Signatures](examples/jws_multi)<br>[Opaque Signing](examples/jws_opaque) |
+| **JWE** | [Compact JWE](examples/jwe)<br>[Multiple Recipients](examples/jwe_multi)                                          |
+| **JWK** | [Key Conversion and Thumbprints](examples/jwk)<br>[Key Publication and Resolution](examples/jwk_set)              |
+
+Each example is a standalone Go module with its own README covering setup, execution, expected output, workflow details,
+and security considerations.
 
 ## References
 
-* [JWT Introduction](https://jwt.io/introduction) — Core concepts of JSON Web Tokens.
-* [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) — Official JSON Web Token specification.
+* **[RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515)** — JSON Web Signature (JWS)
+* **[RFC 7516](https://datatracker.ietf.org/doc/html/rfc7516)** — JSON Web Encryption (JWE)
+* **[RFC 7517](https://datatracker.ietf.org/doc/html/rfc7517)** — JSON Web Key (JWK)
+* **[RFC 7518](https://datatracker.ietf.org/doc/html/rfc7518)** — JSON Web Algorithms (JWA)
+* **[RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519)** — JSON Web Token (JWT)
+* **[RFC 7520](https://datatracker.ietf.org/doc/html/rfc7520)** — Examples of Protecting Content Using JOSE
+* **[RFC 7638](https://datatracker.ietf.org/doc/html/rfc7638)** — JSON Web Key Thumbprint
+* **[RFC 8037](https://datatracker.ietf.org/doc/html/rfc8037)** — CFRG ECDH and Signatures in JOSE
+* **[RFC 8725](https://datatracker.ietf.org/doc/html/rfc8725)** — JSON Web Token Best Current Practices
+* **[RFC 9864](https://datatracker.ietf.org/doc/html/rfc9864)** — Fully-Specified Algorithms for JOSE and COSE
 
 ## License
 

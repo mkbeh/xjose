@@ -1,39 +1,348 @@
-version: 3
+version: "3"
 
 vars:
   LINTER_VER: "v2.12.2"
+  GOMODCACHE:
+    sh: go env GOMODCACHE
+  GOCACHE:
+    sh: go env GOCACHE
+
+  BENCH_GOMAXPROCS: "1"
+  BENCH_PATTERN: "^Benchmark"
+  BENCH_TIME: "2s"
+  BENCH_COUNT: "5"
 
 tasks:
   run:
-    desc: "Full cycle"
-    deps:
-      - lint
-      - tests
+    desc: "Run lint and tests for all modules and doctests"
+    cmds:
+      - task: lint
+      - task: test
+
+  before-commit:
+    desc: "Run all checks before committing"
+    cmds:
+      - task: run
+      - task: check-examples
 
   lint:
-    desc: "lint"
+    desc: "Lint all modules and doctests"
     cmds:
-      - docker run --rm
+      - task: lint-jwt
+      - task: lint-jws
+      - task: lint-jwe
+      - task: lint-jwk
+      - task: lint-doctests
+
+  lint-jwt:
+    desc: "Lint JWT module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwt
+
+  lint-jws:
+    desc: "Lint JWS module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jws
+
+  lint-jwe:
+    desc: "Lint JWE module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwe
+
+  lint-jwk:
+    desc: "Lint JWK module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/jwk
+
+  lint-doctests:
+    desc: "Lint doctests module"
+    cmds:
+      - task: _run-linter
+        vars:
+          WORK_DIR: /app/doctests
+
+  test:
+    desc: "Test all modules and doctests"
+    cmds:
+      - task: test-jwt
+      - task: test-jws
+      - task: test-jwe
+      - task: test-jwk
+      - task: test-doctests
+
+  test-jwt:
+    desc: "Test JWT module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwt
+
+  test-jws:
+    desc: "Test JWS module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jws
+
+  test-jwe:
+    desc: "Test JWE module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwe
+
+  test-jwk:
+    desc: "Test JWK module"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./jwk
+
+  test-doctests:
+    desc: "Run executable documentation tests"
+    cmds:
+      - task: _run-module-tests
+        vars:
+          WORK_DIR: ./doctests
+
+  check-examples:
+    desc: "Build and test example modules against the local checkout"
+    cmds:
+      - |
+        set -eu
+
+        root="{{.ROOT_DIR}}"
+        workspace="$root/go.work"
+        created_workspace=false
+
+        cleanup() {
+          if [ "$created_workspace" = "true" ]; then
+            rm -f "$root/go.work" "$root/go.work.sum"
+          fi
+        }
+        trap cleanup EXIT
+
+        if [ ! -f "$workspace" ]; then
+          created_workspace=true
+
+          (
+            cd "$root"
+
+            GOWORK=off go work init \
+              ./jwt \
+              ./jws \
+              ./jwe \
+              ./jwk \
+              ./doctests
+
+            find ./examples -name go.mod -print |
+            sort |
+            while IFS= read -r mod; do
+              GOWORK="$workspace" go work use "$(dirname "$mod")"
+            done
+          )
+        fi
+
+        find "$root/examples" -name go.mod -print |
+        sort |
+        while IFS= read -r mod; do
+          dir="$(dirname "$mod")"
+          echo "==> ${dir#"$root/"}"
+
+          (
+            cd "$dir"
+            GOWORK="$workspace" go test -mod=readonly -race -count=1 ./...
+          )
+        done
+
+  tidy:released:
+    desc: "Tidy all modules against published internal versions"
+    cmds:
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwt
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jws
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwe
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./jwk
+      - task: _tidy-released-module
+        vars:
+          WORK_DIR: ./doctests
+
+  tidy:examples:released:
+    desc: "Tidy example modules against published internal versions"
+    cmds:
+      - |
+        set -eu
+
+        root="{{.ROOT_DIR}}"
+
+        find "$root/examples" -name go.mod -print |
+        sort |
+        while IFS= read -r mod; do
+          dir="$(dirname "$mod")"
+          echo "==> ${dir#"$root/"}"
+
+          (
+            cd "$dir"
+            GOWORK=off go mod tidy -v
+          )
+        done
+
+  coverage:
+    desc: "Run tests and print total coverage for production modules"
+    cmds:
+      - |
+        set -eu
+
+        root="{{.ROOT_DIR}}"
+        output="$root/coverage.out"
+        profiles="$(mktemp -d)"
+
+        cleanup() {
+          rm -rf "$profiles"
+        }
+        trap cleanup EXIT
+
+        printf 'mode: atomic\n' > "$output"
+
+        for module in jwt jws jwe jwk; do
+          echo "==> $module"
+          profile="$profiles/$module.out"
+
+          (
+            cd "$root/$module"
+
+            GOWORK="$root/go.work" go test \
+              -tags=integration \
+              -count=1 \
+              -covermode=atomic \
+              -coverprofile="$profile" \
+              ./...
+          )
+
+          tail -n +2 "$profile" >> "$output"
+        done
+
+        GOWORK="$root/go.work" go tool cover -func="$output" | grep total
+
+  coverage:html:
+    desc: "Generate HTML coverage report"
+    deps:
+      - coverage
+    dir: "{{.ROOT_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
+    cmds:
+      - go tool cover -html=coverage.out -o coverage.html
+
+  benchmark:
+    desc: "Run all benchmarks"
+    aliases:
+      - bench
+    cmds:
+      - task: benchmark:jwt
+      - task: benchmark:jws
+      - task: benchmark:jwe
+
+  benchmark:jwt:
+    desc: "Run JWT benchmarks"
+    aliases:
+      - bench:jwt
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: ./jwt
+
+  benchmark:jws:
+    desc: "Run JWS benchmarks"
+    aliases:
+      - bench:jws
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: ./jws
+
+  benchmark:jwe:
+    desc: "Run JWE benchmarks"
+    aliases:
+      - bench:jwe
+    cmds:
+      - task: _run-benchmarks
+        vars:
+          WORK_DIR: ./jwe
+
+  _tidy-released-module:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    dir: "{{.WORK_DIR}}"
+    env:
+      GOWORK: "off"
+    cmds:
+      - go mod tidy -v
+
+  _run-linter:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    desc: "Run golangci-lint in Docker"
+    cmds:
+      - >
+        docker run --rm
         -u $(id -u):$(id -g)
-        -v {{.PWD}}:/app
-        -v {{.GOCACHE_ENV}}:/go/pkg/mod
-        -e GOCACHE=/go/pkg/mod
-        -e GOLANGCI_LINT_CACHE=/go/pkg/mod
-        -w /app
+        -v {{.ROOT_DIR}}:/app
+        -v {{.GOMODCACHE}}:/go/pkg/mod
+        -v {{.GOCACHE}}:/go/build-cache
+        -e GOMODCACHE=/go/pkg/mod
+        -e GOCACHE=/go/build-cache
+        -e GOLANGCI_LINT_CACHE=/go/build-cache/golangci-lint
+        -e GOWORK=/app/go.work
+        -w {{.WORK_DIR}}
         golangci/golangci-lint:{{.LINTER_VER}}
-        golangci-lint run --timeout 5m --fix --modules-download-mode vendor
-    vars:
-      GOCACHE_ENV:
-        sh: go env GOCACHE
-      PWD:
-        sh: pwd
+        golangci-lint run --timeout 5m --fix --modules-download-mode readonly
 
-  tests:
-    desc: "unit tests"
+  _run-benchmarks:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    dir: "{{.WORK_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
+      GOMAXPROCS: "{{.BENCH_GOMAXPROCS}}"
     cmds:
-      - go test ./...
+      - >
+        go test
+        -run='^$'
+        -bench='{{.BENCH_PATTERN}}'
+        -benchmem
+        -benchtime={{.BENCH_TIME}}
+        -count={{.BENCH_COUNT}}
+        ./...
 
-  bench:
-    desc: "bench test"
+  _run-module-tests:
+    internal: true
+    requires:
+      vars:
+        - WORK_DIR
+    dir: "{{.WORK_DIR}}"
+    env:
+      GOWORK: "{{.ROOT_DIR}}/go.work"
     cmds:
-      - go test -bench=. -benchmem
+      - go test -mod=readonly -race -v -count=1 ./...

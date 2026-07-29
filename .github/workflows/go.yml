@@ -1,0 +1,222 @@
+name: Go
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  vet:
+    name: Vet (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - jwt
+          - jws
+          - jwe
+          - jwk
+          - doctests
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh
+
+      - name: Run go vet
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: go vet -mod=readonly ./...
+
+  test:
+    name: Test (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - jwt
+          - jws
+          - jwe
+          - jwk
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh
+
+      - name: Run tests
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          go test \
+            -mod=readonly \
+            -tags=integration \
+            -race \
+            -shuffle=on \
+            -count=1 \
+            -covermode=atomic \
+            -coverpkg=./... \
+            -coverprofile=coverage.out \
+            ./...
+
+      - name: Print coverage summary
+        working-directory: ${{ matrix.module }}
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: go tool cover -func=coverage.out
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.module }}
+          path: ${{ matrix.module }}/coverage.out
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload coverage to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ env.CODECOV_TOKEN }}
+          files: ./${{ matrix.module }}/coverage.out
+          flags: ${{ matrix.module }}
+          name: coverage-${{ matrix.module }}
+          disable_search: true
+          fail_ci_if_error: true
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: jwt/go.mod
+          cache-dependency-path: |
+            jwt/go.sum
+            jws/go.sum
+            jwe/go.sum
+            jwk/go.sum
+            doctests/go.sum
+            examples/**/go.sum
+
+      - name: Set up Task
+        uses: go-task/setup-task@v2
+
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh --with-examples
+
+      - name: Verify workspace resolution
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          test "$(go env GOWORK)" = "${GITHUB_WORKSPACE}/go.work"
+
+          go list -m -f '{{if .Main}}{{.Path}} => {{.Dir}}{{end}}' all |
+            sed '/^$/d'
+
+          for module in jwt jws jwe jwk; do
+            go list -m \
+              -f 'path={{.Path}} main={{.Main}} version={{.Version}} dir={{.Dir}}' \
+              "github.com/mkbeh/xjose/${module}"
+          done
+
+      - name: Build and test examples
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: task check-examples
+
+  doctests:
+    name: Doctests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: doctests/go.mod
+          cache-dependency-path: doctests/go.sum
+
+      - name: Create temporary Go workspace
+        run: bash .github/scripts/create-go-workspace.sh
+
+      - name: Run doctests
+        working-directory: doctests
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          go test \
+            -mod=readonly \
+            -race \
+            -shuffle=on \
+            -count=1 \
+            ./...
+
+  ci:
+    name: CI
+    if: always()
+    needs:
+      - vet
+      - test
+      - examples
+      - doctests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check required jobs
+        shell: bash
+        run: |
+          test "${{ needs.vet.result }}" = "success"
+          test "${{ needs.test.result }}" = "success"
+          test "${{ needs.examples.result }}" = "success"
+          test "${{ needs.doctests.result }}" = "success"
