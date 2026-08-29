@@ -1,4 +1,4 @@
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
 github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
-github.com/mkbeh/xjose/jwt v0.2.0 h1:9WcF/npBX0Hu/oJ/fJQ6UxEEp+aW7e2EHEvUDnyzPSk=
-github.com/mkbeh/xjose/jwt v0.2.0/go.mod h1:9Pf9KGmwrh5dIG/48FaTvAiDSota0lu5sGFDK6xjj5A=
+github.com/mkbeh/xjose/jwt v0.3.0 h1:GxDN1lRoMb6kiI9fLjnlkIru+du2yIaqd2SVe6tqw+w=
+github.com/mkbeh/xjose/jwt v0.3.0/go.mod h1:E5xjFjndT/dxTAnmUnjALu/vbCi87sYx+g5Fniyg7UA=
