@@ -18,7 +18,6 @@ concurrency:
 permissions:
   actions: read
   contents: read
-  packages: read
   security-events: write
 
 env:
@@ -33,11 +32,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: jwt/go.mod
+          check-latest: true
           cache: false
 
       - name: Create temporary Go workspace
