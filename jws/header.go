@@ -165,7 +165,8 @@ func headerString(header map[jose.HeaderKey]any, name jose.HeaderKey) (string, e
 	text, ok := value.(string)
 	if !ok {
 		return "", fmt.Errorf(
-			"%w: %s must be a string", ErrMalformedToken, name)
+			"%w: %s must be a string", ErrMalformedToken, name,
+		)
 	}
 
 	return text, nil

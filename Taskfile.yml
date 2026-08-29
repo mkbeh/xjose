@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  LINTER_VER: "v2.12.2"
+  LINTER_VER: "v2.13.2"
   GOMODCACHE:
     sh: go env GOMODCACHE
   GOCACHE:
@@ -13,6 +13,11 @@ vars:
   BENCH_COUNT: "5"
 
 tasks:
+  init-workspace:
+    desc: "Initialize or reset the local Go workspace"
+    cmds:
+      - bash .github/scripts/create-go-workspace.sh --with-examples
+
   run:
     desc: "Run lint and tests for all modules and doctests"
     cmds:
@@ -135,19 +140,7 @@ tasks:
 
           (
             cd "$root"
-
-            GOWORK=off go work init \
-              ./jwt \
-              ./jws \
-              ./jwe \
-              ./jwk \
-              ./doctests
-
-            find ./examples -name go.mod -print |
-            sort |
-            while IFS= read -r mod; do
-              GOWORK="$workspace" go work use "$(dirname "$mod")"
-            done
+            bash .github/scripts/create-go-workspace.sh --with-examples
           )
         fi
 

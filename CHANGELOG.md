@@ -1,5 +1,31 @@
 # Changelog
 
+## jwt/v0.3.0
+
+### Changed
+
+* **Minimum Go version:** Raised the minimum supported Go version from Go 1.26 to Go 1.27. No public API changes.
+
+## jws/v0.3.0
+
+### Changed
+
+* **Minimum Go version:** Raised the minimum supported Go version from Go 1.26 to Go 1.27. No public API changes.
+
+## jwe/v0.3.0
+
+### Changed
+
+* **Minimum Go version:** Raised the minimum supported Go version from Go 1.26 to Go 1.27. No public API changes.
+* **JWT dependency:** Updated `github.com/mkbeh/xjose/jwt` from `v0.2.0` to `v0.3.0`.
+
+## jwk/v0.3.0
+
+### Changed
+
+* **Minimum Go version:** Raised the minimum supported Go version from Go 1.26 to Go 1.27. No public API changes.
+* **JWT dependency:** Updated `github.com/mkbeh/xjose/jwt` from `v0.2.0` to `v0.3.0`.
+
 ## jwt/v0.2.0
 
 Initial release of the `jwt` module for issuing and verifying signed JSON Web Tokens with application-defined claims,
@@ -18,8 +44,8 @@ algorithm-bound keys, and configurable verification policies.
 * **Token-type validation:** Protected `typ` header configuration for separating tokens used for different purposes.
 * **Key resolution:** Static verification keys, `StaticKeySet`, and custom `KeyResolver` implementations for trusted
   `kid`-based key selection and rotation.
-* **External signing:** Context-aware signing through `crypto.Signer`, custom signing functions, and
-  application-managed signing backends.
+* **External signing:** Context-aware signing through `crypto.Signer`, custom signing functions, and application-managed
+  signing backends.
 * **Key parsing and serialization:** PEM and DER helpers for RSA, ECDSA, and Ed25519 public and private key material.
 
 ## jws/v0.2.0
@@ -56,8 +82,8 @@ Encryption serializations.
   recipients sharing the same ciphertext with independent key-management parameters.
 * **Algorithm and header policies:** Independent allowlists for key-management (`alg`) and content-encryption (`enc`)
   algorithms, with validation of configured protected `typ`, `cty`, and compression parameters.
-* **Additional Authenticated Data:** Authentication of unencrypted application context through the external AAD field
-  in JWE JSON Serialization.
+* **Additional Authenticated Data:** Authentication of unencrypted application context through the external AAD field in
+  JWE JSON Serialization.
 * **Key resolution:** Static decryption keys and custom `KeyResolver` implementations for application-managed key
   selection.
 * **Protected headers:** Configuration of standard and application-specific protected parameters, with authenticated
